@@ -1,0 +1,3 @@
+[submodule "Marian-ONNX-Converter"]
+	path = Marian-ONNX-Converter
+	url = git@github.com:tristanpenman/Marian-ONNX-Converter.git
