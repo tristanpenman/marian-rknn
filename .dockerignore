@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.swp
+.env
+.venv
+.envrc
+.idea/
+.vscode/
+.git
+.gitmodules
+.gitignore
+models/
+Marian-ONNX-Converter/
