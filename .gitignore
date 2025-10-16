@@ -1,3 +1,4 @@
+.cache
 .python-version
 __pycache__
 cache

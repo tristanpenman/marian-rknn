@@ -1,16 +1,18 @@
-FROM python:3.10-slim
+# check=skip=FromPlatformFlagConstDisallowed
+
+FROM --platform=linux/amd64 python:3.10-slim
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PIP_NO_CACHE_DIR=1 \
-    HF_HOME=/app/.cache/huggingface
+    HF_HOME=/workspace/.cache/huggingface
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends build-essential git \
     && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /app
+WORKDIR /workspace
 
-ENV VIRTUAL_ENV=/app/.venv
+ENV VIRTUAL_ENV=/opt/venv
 ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 
 COPY requirements.txt /tmp/requirements.txt
