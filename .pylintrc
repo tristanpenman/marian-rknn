@@ -1,0 +1,27 @@
+[MASTER]
+load-plugins=
+
+[FORMAT]
+max-line-length=120
+
+[MESSAGES CONTROL]
+disable=
+    consider-merging-isinstance,
+    consider-using-f-string,
+    consider-using-sys-exit,
+    line-too-long,
+    missing-docstring,
+    missing-module-docstring,
+    missing-class-docstring,
+    missing-function-docstring,
+    no-else-return,
+    too-few-public-methods,
+    too-many-arguments,
+    too-many-branches,
+    too-many-function-args,
+    too-many-locals,
+    too-many-positional-arguments,
+    too-many-statements
+
+[TYPECHECK]
+generated-members="cv2.*"
