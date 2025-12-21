@@ -3,6 +3,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    command: python preflight.py --device cpu --model-name Helsinki-NLP/opus-mt-en-fr
+    command: python scripts/preflight.py --device cpu --model-name Helsinki-NLP/opus-mt-en-fr
     volumes:
       - .:/workspace

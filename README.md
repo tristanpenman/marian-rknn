@@ -41,7 +41,7 @@ The script `preflight.py` can be used to check that your system can run a pretra
 For example, to download an English-to-French model and run on a CUDA device:
 
 ```
-$ python3 preflight.py --device cuda --model-name Helsinki-NLP/opus-mt-en-fr
+$ python scripts/preflight.py --device cuda --model-name Helsinki-NLP/opus-mt-en-fr
 Using device: cuda
 Using model: Helsinki-NLP/opus-mt-en-fr
 Enter text to translate (empty line to quit):
@@ -73,13 +73,7 @@ docker build -f docker/Dockerfile -t marian-rknn-preflight .
 You can then run the preflight check inside the container:
 
 ```bash
-docker run --rm -it marian-rknn-preflight python preflight.py --device cpu --model-name Helsinki-NLP/opus-mt-en-fr
-```
-
-The command above drops you into the interactive translator. To persist the Hugging Face cache between runs, mount a volume:
-
-```bash
-docker run --rm -it -v "$PWD/.cache:/app/.cache/huggingface" marian-rknn-preflight
+docker run --rm -it marian-rknn-preflight -v "$PWD:/workspace" python scripts/preflight.py --device cpu --model-name Helsinki-NLP/opus-mt-en-fr
 ```
 
 ### Docker Compose
@@ -122,7 +116,7 @@ This is the local path to the model.
 
 ### Export to ONNX
 
-In the [Marian-ONNX-Converter](./Marian-ONNX-Converter) submodule you will find an ONNX implementation of Marian. This includes a conversion script that allows pretrained models from Hugging Face to be converted to ONNX format.
+The [Marian-ONNX-Converter](./Marian-ONNX-Converter) submodule contains an ONNX implementation of Marian. This includes a conversion script that allows pretrained models from Hugging Face to be converted to ONNX format.
 
 ```bash
 python Marian-ONNX-Converter/convert.py
@@ -139,7 +133,8 @@ convert.py: error: the following arguments are required: input
 Use the model path we found earlier:
 
 ```bash
-python Marian-ONNX-Converter/convert.py /workspace/.cache/huggingface/hub/models--Helsinki-NLP--opus-mt-en-fr/snapshots/dd7f6540a7a48a7f4db59e5c0b9c42c8eea67f18
+python Marian-ONNX-Converter/convert.py \
+  /workspace/.cache/huggingface/hub/models--Helsinki-NLP--opus-mt-en-fr/snapshots/dd7f6540a7a48a7f4db59e5c0b9c42c8eea67f18
 ```
 
 While converting / exporting, the output will look like this:
@@ -178,4 +173,24 @@ total 227860
 -rw-r--r-- 1 root root    802397 Oct 16 12:10 target.spm
 -rw-r--r-- 1 root root        42 Oct 16 12:10 tokenizer_config.json
 -rw-r--r-- 1 root root   1339166 Oct 16 12:10 vocab.json
+```
+
+The files we care about are `decoder.onnx` and `encoder.onnx`.
+
+### ONNX to RKNN
+
+The next step is to convert from ONNX to RKNN. We can use [convert.py](scripts/convert.py).
+
+Start by converting the encoder:
+
+```
+python scripts/convert.py \
+  outs/dd7f6540a7a48a7f4db59e5c0b9c42c8eea67f18/encoder.onnx rk3588
+```
+
+Then we can convert the decoder:
+
+```
+python scripts/convert.py \
+  outs/dd7f6540a7a48a7f4db59e5c0b9c42c8eea67f18/decoder.onnx rk3588
 ```
