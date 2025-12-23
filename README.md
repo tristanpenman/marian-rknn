@@ -17,6 +17,8 @@ Python scripts and other resources to run MarianMT models on Rockchip NPU device
   * [Get Model Path](#get-model-path)
   * [Export to ONNX](#export-to-onnx)
   * [ONNX to RKNN](#onnx-to-rknn)
+* [Native Implementation](#native-implementation)
+  * [Cross-Compilation](#cross-compilation)
 
 ## Background
 
@@ -256,4 +258,31 @@ I rknn building done.
 done
 --> Export rknn model
 done
+```
+
+## Native Implementation
+
+A native RKNN implementation of Marian MT can be found in the [cpp](./cpp) directory. This can be cross-compiled for the Rockchip platform using a Docker container. This build relies on a CMake [Out-of-Source Build](https://cmake.org/cmake/help/book/mastering-cmake/chapter/Getting%20Started.html#directory-structure).
+
+### Cross-Compilation
+
+Build and run the container using Docker Compose:
+
+```
+docker compose run --build build /bin/bash
+```
+
+Compile the project using CMake:
+
+```
+mkdir -p cpp/build
+cd cpp/build
+cmake ..
+make
+```
+
+The `marian-rknn` executable can then be copied over to the target device, using `scp` or another file transfer utility. For example:
+
+```
+scp marian-rknn <edge2-ip>:~
 ```

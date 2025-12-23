@@ -10,6 +10,7 @@ RUN apt-get update \
         ca-certificates \
         cmake \
         curl \
+        git \
         make \
         xz-utils \
     && apt-get clean
