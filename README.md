@@ -134,20 +134,17 @@ Use the model path we found earlier:
 
 ```bash
 python Marian-ONNX-Converter/convert.py \
-  /workspace/.cache/huggingface/hub/models--Helsinki-NLP--opus-mt-en-fr/snapshots/dd7f6540a7a48a7f4db59e5c0b9c42c8eea67f18
+  /workspace/.cache/huggingface/hub/models--Helsinki-NLP--opus-mt-en-fr/snapshots/dd7f6540a7a48a7f4db59e5c0b9c42c8eea67f18 \
+  --no-quantize
 ```
+
+It's very important to specify `--no-quantize`. Failure to do so will produce a model graph that contains layers/operations that are not supported by RKNN.
 
 While converting / exporting, the output will look like this:
 
 ```
 Exporting encoder to ONNX...
-Quantizing...
-WARNING:root:Please consider to run pre-processing before quantization. Refer to example: https://github.com/microsoft/onnxruntime-inference-examples/blob/main/quantization/image_classification/cpu/ReadMe.md
-Done
 Exporting decoder to ONNX...
-Quantizing...
-WARNING:root:Please consider to run pre-processing before quantization. Refer to example: https://github.com/microsoft/onnxruntime-inference-examples/blob/main/quantization/image_classification/cpu/ReadMe.md
-Done
 Verifying export...
 
 Not equal to tolerance rtol=0.001, atol=0.001
@@ -158,6 +155,8 @@ Not equal to tolerance rtol=0.001, atol=0.001
 Creating archive file...
 Done.
 ```
+
+We don't need to worry too much about the shape mismatch. This tells us that the output from the original and converted models differ slightly, which is sometimes caused by difference in tokenizers.
 
 The ONNX-format encoder/decoder will be written to `outs/<model-name>`:
 
@@ -177,20 +176,83 @@ total 227860
 
 The files we care about are `decoder.onnx` and `encoder.onnx`.
 
+### Verify ONNX
+
+Before proceeding any further, it's a good idea to verify that the ONNX models work correctly:
+
+```bash
+python Marian-ONNX-Converter/test.py \
+  outs/dd7f6540a7a48a7f4db59e5c0b9c42c8eea67f18
+```
+
+You should be able to translate from English to French with ease:
+
+```
+Enter text to translate (empty line to quit):
+> I am a fish
+Je suis un poisson
+```
+
 ### ONNX to RKNN
 
 The next step is to convert from ONNX to RKNN. We can use [convert.py](scripts/convert.py).
 
 Start by converting the encoder:
 
-```
+```bash
 python scripts/convert.py \
-  outs/dd7f6540a7a48a7f4db59e5c0b9c42c8eea67f18/encoder.onnx rk3588
+  outs/dd7f6540a7a48a7f4db59e5c0b9c42c8eea67f18 rk3588
 ```
 
-Then we can convert the decoder:
+This will look for `encoder.onnx` and `decoder.onnx` in the specified directory, and convert them to `encoder.rknn` and `decoder.rknn` respectively.
+
+The output may be a little noisy:
 
 ```
-python scripts/convert.py \
-  outs/dd7f6540a7a48a7f4db59e5c0b9c42c8eea67f18/decoder.onnx rk3588
+Converting encoder!
+I rknn-toolkit2 version: 2.3.2
+--> Config model
+W config: Please make sure the model can be dynamic when enable 'config.dynamic_input'!
+I The 'dynamic_input' function has been enabled, the MaxShape is dynamic_input[0] = [[1, 32], [1, 32]]!
+          The following functions are subject to the MaxShape:
+            1. The quantified dataset needs to be configured according to MaxShape
+            2. The eval_perf or eval_memory return the results of MaxShape
+done
+--> Loading model
+W load_onnx: If you don't need to crop the model, don't set 'inputs'/'input_size_list'/'outputs'!
+I Loading : 100%|█████████████████████████████████████████████████| 98/98 [00:00<00:00, 6059.17it/s]
+done
+--> Building model
+...
+I rknn building ...
+E RKNN: [07:55:26.585] Unkown op target: 0
+E RKNN: [07:55:26.585] Unkown op target: 0
+I rknn building done.
+done
+--> Export rknn model
+done
+Converting decoder!
+I rknn-toolkit2 version: 2.3.2
+--> Config model
+W config: Please make sure the model can be dynamic when enable 'config.dynamic_input'!
+I The 'dynamic_input' function has been enabled, the MaxShape is dynamic_input[0] = [[1, 32], [1, 32], [1, 32, 512]]!
+          The following functions are subject to the MaxShape:
+            1. The quantified dataset needs to be configured according to MaxShape
+            2. The eval_perf or eval_memory return the results of MaxShape
+done
+--> Loading model
+W load_onnx: If you don't need to crop the model, don't set 'inputs'/'input_size_list'/'outputs'!
+I Loading : 100%|███████████████████████████████████████████████| 158/158 [00:00<00:00, 8614.77it/s]
+W load_onnx: The config.mean_values is None, zeros will be set for input 2!
+W load_onnx: The config.std_values is None, ones will be set for input 2!
+done
+--> Building model
+...
+I rknn building ...
+E RKNN: [07:55:31.972] Unkown op target: 0
+E RKNN: [07:55:31.972] Unkown op target: 0
+I rknn building done.
+done
+--> Export rknn model
+done
 ```
