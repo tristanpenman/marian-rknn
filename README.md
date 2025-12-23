@@ -67,13 +67,14 @@ A lightweight Docker image is provided for testing MarianMT on systems without a
 Build the image from the repository root:
 
 ```bash
-docker build -f docker/Dockerfile -t marian-rknn-preflight .
+docker build -f Dockerfile.python -t marian-rknn-python .
 ```
 
 You can then run the preflight check inside the container:
 
 ```bash
-docker run --rm -it marian-rknn-preflight -v "$PWD:/workspace" python scripts/preflight.py --device cpu --model-name Helsinki-NLP/opus-mt-en-fr
+docker run --rm -it marian-rknn-python -v "$PWD:/workspace" \
+  python scripts/preflight.py --device cpu --model-name Helsinki-NLP/opus-mt-en-fr
 ```
 
 ### Docker Compose
@@ -81,7 +82,7 @@ docker run --rm -it marian-rknn-preflight -v "$PWD:/workspace" python scripts/pr
 For an even easier time, you can use Docker Compose:
 
 ```bash
-docker compose run --build marian-rknn
+docker compose run --build python
 ```
 
 This will automatically run the preflight script, and drop you into the interactive transalator.
@@ -89,7 +90,7 @@ This will automatically run the preflight script, and drop you into the interact
 The same Docker Compose command can be used to run arbitrary scripts inside the container, or even just to load a bash shell:
 
 ```bash
-docker compose run --build marian-rknn /bin/bash
+docker compose run --build python /bin/bash
 ```
 
 ## Hugging Face
