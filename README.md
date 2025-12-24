@@ -256,3 +256,7 @@ done
 --> Export rknn model
 done
 ```
+
+## License
+
+This code is released under the Apache License 2.0 license. See the [LICENSE](./LICENSE) file for more information.
