@@ -1,6 +1,8 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+
+#include "file_utils.h"
 
 #define MAX_TEXT_LINE_LENGTH 1024
 
@@ -29,7 +31,7 @@ unsigned char* load_model(const char* filename, int* model_size)
 int read_data_from_file(const char *path, char **out_data)
 {
     FILE *fp = fopen(path, "rb");
-    if(fp == NULL) {
+    if (fp == NULL) {
         printf("fopen %s fail!\n", path);
         return -1;
     }
@@ -38,13 +40,13 @@ int read_data_from_file(const char *path, char **out_data)
     char *data = (char *)malloc(file_size+1);
     data[file_size] = 0;
     fseek(fp, 0, SEEK_SET);
-    if(file_size != fread(data, 1, file_size, fp)) {
+    if (file_size != fread(data, 1, file_size, fp)) {
         printf("fread %s fail!\n", path);
         free(data);
         fclose(fp);
         return -1;
     }
-    if(fp) {
+    if (fp) {
         fclose(fp);
     }
     *out_data = data;
@@ -56,7 +58,7 @@ int write_data_to_file(const char *path, const char *data, unsigned int size)
     FILE *fp;
 
     fp = fopen(path, "w");
-    if(fp == NULL) {
+    if (fp == NULL) {
         printf("open error: %s\n", path);
         return -1;
     }
@@ -73,11 +75,9 @@ int count_lines(FILE* file)
     int count = 0;
     char ch;
 
-    while(!feof(file))
-    {
+    while (!feof(file)) {
         ch = fgetc(file);
-        if(ch == '\n')
-        {
+        if (ch == '\n') {
             count++;
         }
     }

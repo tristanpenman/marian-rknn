@@ -1,5 +1,4 @@
-#ifndef _RKNN_DEMO_BPE_TOOLS_H_
-#define _RKNN_DEMO_BPE_TOOLS_H_
+#pragma once
 
 #define BPE_DICT_LEN 32005
 #define COMMON_DICT_LEN 10000
@@ -52,7 +51,6 @@ Search_result get_index_in_sorted_group(SORTED_DICT_GROUP sdg, const char word[W
 
 class Bpe_Tools
 {
-private:
     /* data */
     SORTED_DICT_GROUP bpe_sdg, common_word_sdg, token_sdg;
 
@@ -82,5 +80,3 @@ public:
 
     int get_word_by_token(int token, char* word);
 };
-
-#endif // _RKNN_DEMO_BPE_TOOLS_H_

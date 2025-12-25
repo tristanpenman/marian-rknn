@@ -16,10 +16,10 @@ set(LIBTIMER_INCLUDES ${TIMER_PATH})
 
 add_executable(${PROJECT_NAME}
     bpe_tools.cc
-    file_utils.c
+    file_utils.cc
     main.cc
-    lite_transformer.cc
-    rknn_demo_utils.cc
+    marian_rknn.cc
+    rknn_utils.cc
 )
 
 target_link_libraries(${PROJECT_NAME}
