@@ -3,6 +3,9 @@ cmake_minimum_required(VERSION 3.31)
 set(CMAKE_DISABLE_SOURCE_CHANGES ON)
 set(CMAKE_DISABLE_IN_SOURCE_BUILD ON)
 
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
 # FetchContent: Easier than Git submodules
 include(FetchContent)
 
@@ -37,6 +40,7 @@ FetchContent_Declare(
 
 # Aliased to sentencepiece-static
 FetchContent_MakeAvailable(sentencepiece)
+set(LIBSENTENCEPIECE_INCLUDES ${sentencepiece_SOURCE_DIR}/src)
 
 # Suppress warning in sentencepiece build
 target_compile_options(sentencepiece-static PRIVATE

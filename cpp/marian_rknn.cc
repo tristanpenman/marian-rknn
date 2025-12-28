@@ -16,6 +16,7 @@
 #include <cmath>
 
 #include "rknn_api.h"
+#include "sentencepiece_processor.h"
 
 #include "easy_timer.h"
 #include "bpe_tools.h"

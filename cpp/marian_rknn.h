@@ -14,6 +14,8 @@
 
 #pragma once
 
+#include "sentencepiece_processor.h"
+
 #include "rknn_api.h"
 #include "common.h"
 #include "rknn_utils.h"
@@ -46,6 +48,8 @@ typedef struct {
     MODEL_INFO dec;
     NMT_TOKENS nmt_tokens;
     Bpe_Tools *bpe_tools;
+    sentencepiece::SentencePieceProcessor spm_src;
+    sentencepiece::SentencePieceProcessor spm_tgt;
 
     int enc_len;
     int dec_len;
