@@ -20,7 +20,6 @@
 #include "common.h"
 #include "rknn_utils.h"
 #include "easy_timer.h"
-#include "bpe_tools.h"
 
 #define HEAD_NUM 4
 #define EMBEDDING_DIM 256
@@ -47,9 +46,11 @@ typedef struct {
     MODEL_INFO enc;
     MODEL_INFO dec;
     NMT_TOKENS nmt_tokens;
-    Bpe_Tools *bpe_tools;
     sentencepiece::SentencePieceProcessor spm_src;
     sentencepiece::SentencePieceProcessor spm_tgt;
+    int pad_token_id;
+    int bos_token_id;
+    int eos_token_id;
 
     int enc_len;
     int dec_len;
@@ -61,10 +62,8 @@ int init_marian_rknn_model(
     const char* decoder_path,
     const char* token_embed_path,
     const char* pos_embed_path,
-    const char* bpe_dict_path,
-    const char* token_dict_path,
-    const char* common_word_path,
-    DICT_ORDER_TYPE dict_order_type,
+    const char* source_spm_path,
+    const char* target_spm_path,
     rknn_marian_rknn_context_t* app_ctx);
 
 int release_marian_rknn_model(

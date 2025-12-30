@@ -48,7 +48,6 @@ target_compile_options(sentencepiece-static PRIVATE
 )
 
 add_executable(${PROJECT_NAME}
-    bpe_tools.cc
     file_utils.cc
     main.cc
     marian_rknn.cc

@@ -15,7 +15,6 @@
 #include <cstdio>
 
 #include "marian_rknn.h"
-#include "bpe_tools.h"
 #include "easy_timer.h"
 
 void safe_flush()
@@ -54,10 +53,8 @@ int main(int argc, char **argv)
     const char* token_embed_path = "./model/token_embed.bin";
     const char* pos_embed_path = "./model/position_embed.bin";
 
-    DICT_ORDER_TYPE dict_order_type = ORDERED;
-    const char *bpe_dict_path = "./model/bpe_order.txt";
-    const char *token_dict_path = "./model/dict_order.txt";
-    const char *common_word_path = "./model/cw_token_map_order.txt";
+    const char* source_spm_path = "./model/source.spm";
+    const char* target_spm_path = "./model/target.spm";
 
     int ret;
     rknn_marian_rknn_context_t rknn_app_ctx;
@@ -75,10 +72,8 @@ int main(int argc, char **argv)
         decoder_path,
         token_embed_path,
         pos_embed_path,
-        bpe_dict_path,
-        token_dict_path,
-        common_word_path,
-        dict_order_type,
+        source_spm_path,
+        target_spm_path,
         &rknn_app_ctx);
 
     if (ret != 0) {

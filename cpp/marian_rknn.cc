@@ -19,17 +19,11 @@
 #include "sentencepiece_processor.h"
 
 #include "easy_timer.h"
-#include "bpe_tools.h"
 #include "marian_rknn.h"
 #include "rknn_utils.h"
 #include "type_half.h"
 
-int token_embedding(
-    float *token_embed,    // input
-    float *position_embed, // input
-    int *tokens,           // input
-    int len,               // input
-    float *embedding)      // output
+int token_embedding(float *token_embed, float *position_embed, int *tokens, int len, float *embedding, int pad_token_id)
 {
     float scale = sqrt(EMBEDDING_DIM);
     int pad = 1;
@@ -40,7 +34,7 @@ int token_embedding(
     }
 
     for (int i = 0; i < len; i++) {
-        if (tokens[i] != 1) {
+        if (tokens[i] != pad_token_id) {
             pad++;
         } else {
             pad = 1;
@@ -84,48 +78,6 @@ int load_bin_fp32(const char* filename, float* data, int len)
     return 0;
 }
 
-int sentence_to_word(const char* sentence, char** word, int max_word_num_in_sentence, int max_word_len)
-{
-    int num_word = 0;
-    int c = 0;
-    for (int i = 0; i < max_word_num_in_sentence; i++) {
-        memset(word[i], 0, max_word_len);
-    }
-
-    for (int i = 0; i < max_word_num_in_sentence; i++) {
-        if (sentence[i] == ' ') {
-            num_word++;
-            c = 0;
-            i++;
-        }
-        word[num_word][c] = sentence[i];
-        c++;
-    }
-    return num_word;
-}
-
-int decoder_token_2_word(int* output_token, char* strings, Bpe_Tools* bpe_tools)
-{
-    char predict_word[MAX_WORD_LEN];
-    for (int i = 1; i < MAX_WORD_LEN; i++) {
-        memset(predict_word, 0x00, sizeof(predict_word));
-        if (output_token[i] == 2 or output_token[i] <= 0) {
-            break;
-        }
-        bpe_tools->get_word_by_token(output_token[i], predict_word);
-        for (int j = 0; j < MAX_WORD_LEN; j++) {
-            if (predict_word[j] == '@' and predict_word[j + 1] == '@') {
-                predict_word[j] = 0;
-                predict_word[j + 1] = 0;
-                break;
-            }
-        }
-        strcat(strings, predict_word);
-    }
-
-    return 0;
-}
-
 int rknn_nmt_process(
     rknn_marian_rknn_context_t* app_ctx,
     int* input_token,
@@ -155,7 +107,7 @@ int rknn_nmt_process(
 
     int input_token_give = 0;
     for (int i=0; i<app_ctx->enc_len; i++) {
-        if (input_token[i] <= 1) {
+        if (input_token[i] <= 0 || input_token[i] == app_ctx->pad_token_id) {
             break;
         }
         input_token_give++;
@@ -163,22 +115,22 @@ int rknn_nmt_process(
 #ifdef ENCODER_INPUT_TOKEN_RIGHTSIDE_ALIGN
     // working as [22,33,1,1,1,1] -> [1,1,1,22,33,2]
     memset(input_token_sorted, 0, app_ctx->enc_len*sizeof(int));
-    input_token_sorted[app_ctx->enc_len-1] = 2;
+    input_token_sorted[app_ctx->enc_len-1] = app_ctx->eos_token_id;
     for (int i=0; i<input_token_give; i++) {
         input_token_sorted[app_ctx->enc_len-1 - input_token_give +i] = input_token[i];
     }
 #else
     // working as [22,33,1,1,1,1] -> [22,33,2,1,1,1]
-    input_token_sorted[token_list_len] = 2;
+    input_token_sorted[token_list_len] = app_ctx->eos_token_id;
 #endif
 
     // gen encoder mask
     printf("input tokens(all should > 0):\n");
     for (int i=0; i< app_ctx->enc_len; i++) {
         if (input_token_sorted[i] == 0) {
-            input_token_sorted[i] = 1;
+            input_token_sorted[i] = app_ctx->pad_token_id;
             enc_mask[i] = 1;
-        } else if (input_token_sorted[i] == 1) {
+        } else if (input_token_sorted[i] == app_ctx->pad_token_id) {
             enc_mask[i] = 1;
         } else {
             enc_mask[i] = 0;
@@ -196,7 +148,7 @@ int rknn_nmt_process(
         }
     }
 
-    token_embedding(app_ctx->nmt_tokens.enc_token_embed, app_ctx->nmt_tokens.enc_pos_embed, input_token_sorted, app_ctx->enc_len, enc_embedding);
+    token_embedding(app_ctx->nmt_tokens.enc_token_embed, app_ctx->nmt_tokens.enc_pos_embed, input_token_sorted, app_ctx->enc_len, enc_embedding, app_ctx->pad_token_id);
     float_to_half_array(enc_embedding, (half*)(app_ctx->enc.input_mem[0]->virt_addr), app_ctx->enc.in_attr[0].n_elems);
     float_to_half_array(enc_mask_expand, (half*)(app_ctx->enc.input_mem[1]->virt_addr), app_ctx->enc.in_attr[1].n_elems);
 
@@ -211,10 +163,10 @@ int rknn_nmt_process(
     timer.print_time("rknn encoder run");
 
     for (int i = 0; i < app_ctx->dec_len; i++) {
-        output_token[i] = 1;
+        output_token[i] = app_ctx->pad_token_id;
     }
 
-    output_token[0] = 2;
+    output_token[0] = app_ctx->bos_token_id;
 
     printf("reset decoder input and output mem\n");
     for (int input_index = 0; input_index < app_ctx->dec.n_input; input_index++) {
@@ -231,7 +183,7 @@ int rknn_nmt_process(
     // decoder run
     timer_total.tik();
     for (int num_iter = 0; num_iter < app_ctx->dec_len; num_iter++) {
-        token_embedding(app_ctx->nmt_tokens.dec_token_embed, app_ctx->nmt_tokens.dec_pos_embed, output_token, num_iter+1, dec_embedding);
+        token_embedding(app_ctx->nmt_tokens.dec_token_embed, app_ctx->nmt_tokens.dec_pos_embed, output_token, num_iter+1, dec_embedding, app_ctx->pad_token_id);
         float_to_half_array(dec_embedding + num_iter*EMBEDDING_DIM, (half*)(app_ctx->dec.input_mem[0]->virt_addr), app_ctx->dec.in_attr[0].n_elems);
 
         float mask;
@@ -299,7 +251,7 @@ int rknn_nmt_process(
         //debug
         // printf("argmax - index %d, value %f\n", max, value);
         output_token[num_iter + 1] = max;
-        if (max == 2) {
+        if (max == app_ctx->eos_token_id) {
             break;
         }
     }
@@ -329,43 +281,80 @@ int init_marian_rknn_model(
     const char* decoder_path,
     const char* token_embed_path,
     const char* pos_embed_path,
-    const char* bpe_dict_path,
-    const char* token_dict_path,
-    const char* common_word_path,
-    DICT_ORDER_TYPE dict_order_type,
+    const char* source_spm_path,
+    const char* target_spm_path,
     rknn_marian_rknn_context_t* app_ctx)
 {
     int ret = 0;
     memset(app_ctx, 0x00, sizeof(rknn_marian_rknn_context_t));
 
     printf("--> init rknn encoder %s\n", encoder_path);
-    printf("--> init rknn decoder %s\n", decoder_path);
     app_ctx->enc.m_path = encoder_path;
-    // app_ctx->enc.verbose_log = 1;
-    app_ctx->dec.m_path = decoder_path;
-    // app_ctx->dec.verbose_log = 1;
+    app_ctx->enc.verbose_log = 1;
+    ret = rknn_utils_init(&app_ctx->enc);
+    if (ret != 0) {
+        printf("rknn_utils_init ret=%d\n", ret);
+        return -1;
+    }
 
-    rknn_utils_init(&app_ctx->enc);
-    rknn_utils_init(&app_ctx->dec);
+    printf("--> init rknn decoder %s\n", decoder_path);
+    app_ctx->dec.m_path = decoder_path;
+    app_ctx->dec.verbose_log = 1;
+    ret = rknn_utils_init(&app_ctx->dec);
+    if (ret != 0) {
+        printf("rknn_utils_init ret=%d\n", ret);
+        return -1;
+    }
 
     app_ctx->enc_len = app_ctx->enc.in_attr[0].dims[1];
+    printf("--> enc len: %d\n", app_ctx->enc_len);
+
     app_ctx->dec_len = app_ctx->dec.in_attr[3].dims[1];
+    printf("--> dec len: %d\n", app_ctx->dec_len);
 
-    rknn_utils_init_input_buffer_all(&app_ctx->enc, ZERO_COPY_API, RKNN_TENSOR_FLOAT16);
-    rknn_utils_init_output_buffer_all(&app_ctx->enc, ZERO_COPY_API, 0);
+    printf("--> init encoder buffers\n");
+    ret = rknn_utils_init_input_buffer_all(&app_ctx->enc, ZERO_COPY_API, RKNN_TENSOR_FLOAT16);
+    if (ret != 0) {
+        printf("rknn_utils_init_input_buffer_all ret=%d\n", ret);
+        return -1;
+    }
 
-    rknn_utils_init_input_buffer_all(&app_ctx->dec, ZERO_COPY_API, RKNN_TENSOR_FLOAT16);
-    rknn_utils_init_output_buffer_all(&app_ctx->dec, ZERO_COPY_API, 0);
+    ret = rknn_utils_init_output_buffer_all(&app_ctx->enc, ZERO_COPY_API, 0);
+    if (ret != 0) {
+        printf("rknn_utils_init_output_buffer_all ret=%d\n", ret);
+        return -1;
+    }
+
+    printf("--> init decoder buffers\n");
+    ret = rknn_utils_init_input_buffer_all(&app_ctx->dec, ZERO_COPY_API, RKNN_TENSOR_FLOAT16);
+    if (ret != 0) {
+        printf("rknn_utils_init_input_buffer_all ret=%d\n", ret);
+        return -1;
+    }
+
+    ret = rknn_utils_init_output_buffer_all(&app_ctx->dec, ZERO_COPY_API, 0);
+    if (ret != 0) {
+        printf("rknn_utils_init_output_buffer_all ret=%d\n", ret);
+        return -1;
+    }
 
     // encoder zero_copy_io_set
-    for (int input_index=0; input_index< app_ctx->enc.n_input; input_index++) {
+    printf("--> rknn_set_io_mem enc inputs; n_input=%u\n", app_ctx->enc.n_input);
+    for (int input_index = 0; input_index < app_ctx->enc.n_input; input_index++) {
+        printf("calling rknn_set_io_mem %d\n", input_index);
+
+        auto &a = app_ctx->enc.in_attr[input_index];
+        printf(" - enc input %d: attr.index=%d name=%s size=%u\n", input_index, a.index, a.name, a.size);
+
         ret = rknn_set_io_mem(app_ctx->enc.ctx, app_ctx->enc.input_mem[input_index], &(app_ctx->enc.in_attr[input_index]));
         if (ret < 0) {
             printf("rknn_set_io_mem fail! ret=%d\n", ret);
             return -1;
         }
     }
-    for (int output_index=0; output_index< app_ctx->enc.n_output; output_index++) {
+
+    printf("--> rknn_set_io_mem enc outputs\n");
+    for (int output_index=0; output_index < app_ctx->enc.n_output; output_index++) {
         ret = rknn_set_io_mem(app_ctx->enc.ctx, app_ctx->enc.output_mem[output_index], &(app_ctx->enc.out_attr[output_index]));
         if (ret < 0) {
             printf("rknn_set_io_mem fail! ret=%d\n", ret);
@@ -419,26 +408,26 @@ int init_marian_rknn_model(
     app_ctx->nmt_tokens.dec_token_embed = app_ctx->nmt_tokens.enc_token_embed;
     app_ctx->nmt_tokens.dec_pos_embed = app_ctx->nmt_tokens.enc_pos_embed;
 
-    app_ctx->bpe_tools = new Bpe_Tools();
-    printf("--> load bpe_dict: %s\n", bpe_dict_path);
-    ret = app_ctx->bpe_tools->prepare_bpe_data(bpe_dict_path, dict_order_type);
-    if (ret != 0) {
+    auto src_status = app_ctx->spm_src.Load(source_spm_path);
+    if (!src_status.ok()) {
+        printf("Failed to load source sentencepiece model: %s\n", src_status.ToString().c_str());
         return -1;
     }
-    printf("--> load word dict: %s\n", token_dict_path);
-    ret = app_ctx->bpe_tools->prepare_token_data(token_dict_path, dict_order_type);
-    if (ret != 0) {
+    auto tgt_status = app_ctx->spm_tgt.Load(target_spm_path);
+    if (!tgt_status.ok()) {
+        printf("Failed to load target sentencepiece model: %s\n", tgt_status.ToString().c_str());
         return -1;
     }
-    app_ctx->bpe_tools->set_token_offset(4);
+    int src_pad_id = app_ctx->spm_src.PieceToId("<pad>");
+    int tgt_pad_id = app_ctx->spm_tgt.PieceToId("<pad>");
+    int pad_candidate = tgt_pad_id >= 0 ? tgt_pad_id : src_pad_id;
+    app_ctx->pad_token_id = pad_candidate >= 0 ? pad_candidate : 0;
 
-    if (common_word_path != nullptr) {
-        printf("--> load common word dict: %s\n", common_word_path);
-        ret = app_ctx->bpe_tools->prepare_common_word_data(common_word_path, CW_TOKEN);
-        if (ret != 0) {
-            return -1;
-        }
-    }
+    int eos_id = app_ctx->spm_tgt.PieceToId("</s>");
+    app_ctx->eos_token_id = eos_id >= 0 ? eos_id : app_ctx->pad_token_id + 1;
+
+    int bos_id = app_ctx->spm_tgt.PieceToId("<s>");
+    app_ctx->bos_token_id = bos_id >= 0 ? bos_id : app_ctx->pad_token_id;
 
     return 0;
 }
@@ -450,7 +439,6 @@ int release_marian_rknn_model(rknn_marian_rknn_context_t* app_ctx)
     rknn_utils_release(&app_ctx->dec);
     free(app_ctx->nmt_tokens.enc_token_embed);
     free(app_ctx->nmt_tokens.enc_pos_embed);
-    delete app_ctx->bpe_tools;
     return 0;
 }
 
@@ -459,30 +447,24 @@ int inference_marian_rknn_model(
     const char* input_sentence,
     char* output_sentence)
 {
-    TIMER timer;
-    char* input_word[MAX_WORD_NUM_IN_SENTENCE];
-    char* output_word[MAX_WORD_NUM_IN_SENTENCE];
-    for (int i = 0; i < MAX_WORD_NUM_IN_SENTENCE; i++) {
-        input_word[i] = (char*)malloc(MAX_WORD_LEN);
-        output_word[i] = (char*)malloc(MAX_WORD_LEN);
-    }
-    timer.tik();
-    int num_word = sentence_to_word(input_sentence, input_word, MAX_WORD_NUM_IN_SENTENCE, MAX_WORD_LEN);
-
     int token_list[100];
     int token_list_len=0;
     memset(token_list, 0, sizeof(token_list));
-    for (int i = 0; i <= num_word; i++) {
-        int word_tokens[WORD_LEN_LIMIT];
-        int _tk_len = 0;
-        _tk_len = app_ctx->bpe_tools->bpe_and_tokenize(input_word[i], word_tokens);
-        for (int j = 0; j < _tk_len; j++) {
-            token_list[token_list_len] = word_tokens[j];
-            token_list_len++;
-        }
+
+    std::vector<int> encoded_tokens;
+    auto status = app_ctx->spm_src.Encode(std::string(input_sentence), &encoded_tokens);
+    if (!status.ok()) {
+        printf("sentencepiece encode failed: %s\n", status.ToString().c_str());
+        return -1;
     }
-    timer.tok();
-    timer.print_time("bpe preprocess");
+    token_list_len = encoded_tokens.size();
+    if (token_list_len > (int)(sizeof(token_list)/sizeof(int))) {
+        printf("WARNING: too many tokens (%d), truncating to %lu\n", token_list_len, sizeof(token_list)/sizeof(int));
+        token_list_len = sizeof(token_list)/sizeof(int);
+    }
+    for (int i = 0; i < token_list_len; ++i) {
+        token_list[i] = encoded_tokens[i];
+    }
 
     int max_input_len = app_ctx->enc_len;
     if (token_list_len > max_input_len) {
@@ -506,12 +488,19 @@ int inference_marian_rknn_model(
     output_len = rknn_nmt_process(app_ctx, token_list, output_token);
 
     memset(output_sentence, 0, MAX_USER_INPUT_LEN);
-    int ret = 0;
-    ret = decoder_token_2_word(output_token, output_sentence, app_ctx->bpe_tools);
-
-    for (int i = 0; i < MAX_WORD_NUM_IN_SENTENCE; i++) {
-        free(input_word[i]);
-        free(output_word[i]);
+    std::vector<int> decode_tokens;
+    for (int i = 1; i < output_len; ++i) {
+        if (output_token[i] == app_ctx->eos_token_id || output_token[i] == app_ctx->pad_token_id || output_token[i] <= 0) {
+            break;
+        }
+        decode_tokens.push_back(output_token[i]);
     }
+    std::string decoded;
+    status = app_ctx->spm_tgt.Decode(decode_tokens, &decoded);
+    if (!status.ok()) {
+        printf("sentencepiece decode failed: %s\n", status.ToString().c_str());
+        return -1;
+    }
+    strncpy(output_sentence, decoded.c_str(), MAX_USER_INPUT_LEN-1);
     return 0;
 }
