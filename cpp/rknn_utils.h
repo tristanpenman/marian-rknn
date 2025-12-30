@@ -55,8 +55,6 @@ typedef struct _MODEL_INFO
     rknn_tensor_mem **input_mem;
     RKNN_UTILS_INPUT_PARAM *rkdmo_input_param;
 
-    // bool inputs_already_init = false;
-
     int n_output;
     rknn_tensor_attr* out_attr = nullptr;
     rknn_tensor_attr* out_attr_native = nullptr;
@@ -64,7 +62,6 @@ typedef struct _MODEL_INFO
     rknn_tensor_mem **output_mem;
     RKNN_UTILS_OUTPUT_PARAM *rkdmo_output_param;
 
-    // bool outputs_already_init = false;
     bool verbose_log = false;
     int diff_input_idx = -1;
 
@@ -82,7 +79,6 @@ void dump_tensor_attr(rknn_tensor_attr *attr);
 int rknn_utils_get_type_size(rknn_tensor_type type);
 
 int rknn_utils_init(MODEL_INFO* model_info);
-int rknn_utils_init_share_weight(MODEL_INFO* model_info, MODEL_INFO* src_model_info);
 int rknn_utils_query_model_info(MODEL_INFO* model_info);
 
 int rknn_utils_init_input_buffer(MODEL_INFO* model_info, int node_index, API_TYPE api_type, uint8_t pass_through, rknn_tensor_type dtype, rknn_tensor_format layout_fmt);

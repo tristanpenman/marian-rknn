@@ -37,33 +37,19 @@ int rknn_utils_init(MODEL_INFO* model_info)
 
     int ret = 0;
     ret = rknn_init(&model_info->ctx, (void *)model_info->m_path, 0, model_info->init_flag, NULL);
-
     if (ret < 0) {
         printf("rknn_init fail! ret=%d\n", ret);
         return -1;
     }
 
-    ret = rknn_utils_query_model_info(model_info);
-    return ret;
-}
-
-int rknn_utils_init_share_weight(MODEL_INFO* model_info, MODEL_INFO* src_model_info)
-{
-    if (model_info->m_path == nullptr) {
-        printf("ERROR model path is null");
+    rknn_sdk_version version;
+    ret = rknn_query(model_info->ctx, RKNN_QUERY_SDK_VERSION, &version, sizeof(rknn_sdk_version));
+    if (ret != 0) {
+        printf("Failed to query RKNN runtime information, error: %d\n", ret);
         return -1;
     }
 
-    int ret = 0;
-    rknn_init_extend extend;
-    memset(&extend,0,sizeof(rknn_init_extend));
-    extend.ctx = src_model_info->ctx;
-
-    ret = rknn_init(&model_info->ctx, (void *)model_info->m_path, 0, RKNN_FLAG_SHARE_WEIGHT_MEM, &extend);
-    if (ret < 0) {
-        printf("rknn_init fail! ret=%d\n", ret);
-        return -1;
-    }
+    printf("RKNN Runtime Information: librknnrt version: %s (api version: %s)\n", version.drv_version, version.api_version);
 
     ret = rknn_utils_query_model_info(model_info);
     return ret;
@@ -166,7 +152,11 @@ int rknn_utils_query_model_info(MODEL_INFO* model_info)
     }
 
     if (model_info->init_flag > 0) {
-        rknn_query(model_info->ctx, RKNN_QUERY_MEM_SIZE, &model_info->mem_size, sizeof(model_info->mem_size));
+        ret = rknn_query(model_info->ctx, RKNN_QUERY_MEM_SIZE, &model_info->mem_size, sizeof(model_info->mem_size));
+        if (ret != RKNN_SUCC) {
+            printf("rknn_query fail! ret=%d\n", ret);
+            return -1;
+        }
     }
 
     return 0;
@@ -290,9 +280,9 @@ int rknn_utils_init_input_buffer_all(MODEL_INFO* model_info, API_TYPE default_ap
             printf("model input buffer already init, ignore\n");
             continue;
         }
-
+        int ret;
         if (model_info->rkdmo_input_param[i].enable) {
-            rknn_utils_init_input_buffer(model_info,
+            ret = rknn_utils_init_input_buffer(model_info,
                                      i,
                                      model_info->rkdmo_input_param[i].api_type,
                                      model_info->rkdmo_input_param[i].pass_through,
@@ -303,7 +293,10 @@ int rknn_utils_init_input_buffer_all(MODEL_INFO* model_info, API_TYPE default_ap
                 default_layout_fmt = model_info->in_attr[i].fmt;
             }
 
-            rknn_utils_init_input_buffer(model_info, i, default_api_type, default_pass_through, default_t_type, default_layout_fmt);
+            ret = rknn_utils_init_input_buffer(model_info, i, default_api_type, default_pass_through, default_t_type, default_layout_fmt);
+        }
+        if (ret != 0) {
+            return ret;
         }
     }
     return 0;
@@ -317,10 +310,14 @@ int rknn_utils_init_output_buffer_all(MODEL_INFO* model_info, API_TYPE default_a
             continue;
         }
 
+        int ret;
         if (model_info->rkdmo_output_param[i].enable) {
-            rknn_utils_init_output_buffer(model_info, i, model_info->rkdmo_output_param[i].api_type, model_info->rkdmo_output_param[i].want_float);
+            ret = rknn_utils_init_output_buffer(model_info, i, model_info->rkdmo_output_param[i].api_type, model_info->rkdmo_output_param[i].want_float);
         } else {
-            rknn_utils_init_output_buffer(model_info, i, default_api_type, default_want_float);
+            ret = rknn_utils_init_output_buffer(model_info, i, default_api_type, default_want_float);
+        }
+        if (ret != 0) {
+            return ret;
         }
     }
     return 0;

@@ -362,8 +362,7 @@ int init_marian_rknn_model(
         }
     }
 
-    // decoder zero_copy_io_
-    // set
+    printf("--> rknn_set_io_mem dec outputs\n");
     for (int output_index=0; output_index< app_ctx->dec.n_output; output_index++) {
         if (app_ctx->dec.out_attr[output_index].fmt == RKNN_TENSOR_NCHW) {
             rknn_query(app_ctx->dec.ctx, RKNN_QUERY_NATIVE_NC1HWC2_OUTPUT_ATTR, &(app_ctx->dec.out_attr[output_index]), sizeof(app_ctx->dec.out_attr[output_index]));
@@ -373,7 +372,7 @@ int init_marian_rknn_model(
         ret = rknn_set_io_mem(app_ctx->dec.ctx, app_ctx->dec.output_mem[output_index], &(app_ctx->dec.out_attr[output_index]));
     }
 
-    // set decoder input
+    printf("--> rknn_set_io_mem dec inputs\n");
     for (int input_index=0; input_index< app_ctx->dec.n_input; input_index++) {
         if (app_ctx->dec.in_attr[input_index].fmt == RKNN_TENSOR_NHWC) {
             rknn_query(app_ctx->dec.ctx, RKNN_QUERY_NATIVE_NC1HWC2_INPUT_ATTR, &(app_ctx->dec.in_attr[input_index]), sizeof(app_ctx->dec.in_attr[input_index]));
@@ -391,15 +390,17 @@ int init_marian_rknn_model(
         ret = rknn_set_io_mem(app_ctx->dec.ctx, app_ctx->dec.input_mem[input_index], &(app_ctx->dec.in_attr[input_index]));
     }
 
-    // init dict and bpe
+    printf("--> malloc token embeddings\n");
     int nmt_word_dict_len = app_ctx->dec.out_attr[0].n_elems/ app_ctx->dec.out_attr[0].dims[0];
     app_ctx->nmt_tokens.enc_token_embed = (float*)malloc(nmt_word_dict_len* EMBEDDING_DIM * sizeof(float));
     app_ctx->nmt_tokens.enc_pos_embed = (float*)malloc(POS_LEN* EMBEDDING_DIM * sizeof(float));
+
     printf("--> load token embed: %s\n", token_embed_path);
     ret = load_bin_fp32(token_embed_path, app_ctx->nmt_tokens.enc_token_embed, nmt_word_dict_len* EMBEDDING_DIM);
     if (ret != 0) {
         return -1;
     }
+
     printf("--> load pos embed: %s\n", pos_embed_path);
     ret = load_bin_fp32(pos_embed_path, app_ctx->nmt_tokens.enc_pos_embed, POS_LEN* EMBEDDING_DIM);
     if (ret != 0) {
