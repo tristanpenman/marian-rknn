@@ -14,6 +14,18 @@ set(CMAKE_POLICY_DEFAULT_CMP0168 NEW)
 
 project(marian-rknn)
 
+# Default to Debug for single-config generators if user didn't specify anything
+get_property(isMultiConfig GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)
+if(NOT isMultiConfig AND NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE Debug CACHE STRING "Build type" FORCE)
+endif()
+
+# Add -O0 to remove optimizations in debug builds
+IF(CMAKE_COMPILER_IS_GNUCC)
+    set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -O0")
+    set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -O0")
+ENDIF(CMAKE_COMPILER_IS_GNUCC)
+
 set(TARGET_LIB_ARCH aarch64)
 set(BUILD_SHARED_LIBS OFF)
 
@@ -27,8 +39,8 @@ set(TIMER_PATH ${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty/timer)
 set(LIBTIMER_INCLUDES ${TIMER_PATH})
 
 # sentencepiece options: statically linked, no tcmalloc
-set(SPM_ENABLE_SHARED "OFF")
-set(SPM_ENABLE_TCMALLOC "OFF")
+set(SPM_ENABLE_SHARED OFF CACHE BOOL INTERNAL)
+set(SPM_ENABLE_TCMALLOC OFF CACHE BOOL INTERNAL)
 
 # sentencepiece
 FetchContent_Declare(
@@ -61,9 +73,17 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     sentencepiece
 )
 
+# Strip debug symbols from release builds
+target_link_options(${PROJECT_NAME} PRIVATE
+  $<$<CONFIG:Release>:-Wl,--strip-all>
+)
+
 target_include_directories(${PROJECT_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${LIBRKNNRT_INCLUDES}
     ${LIBSENTENCEPIECE_INCLUDES}
     ${LIBTIMER_INCLUDES}
 )
+
+message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
+message(STATUS "Generator: ${CMAKE_GENERATOR} (multi-config: ${isMultiConfig})")

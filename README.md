@@ -19,6 +19,7 @@ Python scripts and other resources to run MarianMT models on Rockchip NPU device
   * [ONNX to RKNN](#onnx-to-rknn)
 * [Native Implementation](#native-implementation)
   * [Cross-Compilation](#cross-compilation)
+  * [Release Builds](#release-builds)
 
 ## Background
 
@@ -285,4 +286,20 @@ The `marian-rknn` executable can then be copied over to the target device, using
 
 ```
 scp marian-rknn <edge2-ip>:~
+```
+
+### Release Builds
+
+By default, CMake will produce `Debug` builds, which include debugging symbols and have optimisations disabled.
+
+To produce a `Release` build with `-O3` optimisations enabled:
+
+```bash
+cmake -DCMAKE_BUILD_TYPE=Release ..
+```
+
+Alternatively, you can produce a `RelWithDebInfo` build. This will have `-O2` optimisations enabled while also including debug symbols:
+
+```bash
+cmake -DCMAKE_BUILD_TYPE=RelWithDebInfo ..
 ```
