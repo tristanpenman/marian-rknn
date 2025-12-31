@@ -10,8 +10,7 @@
 #include "rknn_api.h"
 #include "rknn_utils.h"
 
-// static void dump_tensor_attr(rknn_tensor_attr *attr)
-void dump_tensor_attr(rknn_tensor_attr *attr)
+static void dump_tensor_attr(rknn_tensor_attr *attr)
 {
     char dims_str[100];
     char temp_str[100];
@@ -366,6 +365,7 @@ static void dump_input_dynamic_range(rknn_input_range *dyn_range)
            dyn_range->shape_number, range_str.c_str(), get_format_string(dyn_range->fmt));
 }
 
+// TODO: Can this be used to make dynamic inputs work?
 int rknn_utils_query_dynamic_input(MODEL_INFO* model_info)
 {
     if (model_info->verbose_log==true) {
@@ -453,66 +453,6 @@ int rknn_utils_reset_dynamic_input(MODEL_INFO* model_info, int dynamic_shape_gro
     for (int i = 0; i < model_info->n_output; i++) {
         ret = rknn_query(model_info->ctx, RKNN_QUERY_CURRENT_OUTPUT_ATTR, &model_info->out_attr[i], sizeof(rknn_tensor_attr));
     }
-
-    return 0;
-}
-
-int rknn_utils_thread_init(MODEL_INFO** model_infos, int num)
-{
-    int ret = 0;
-    std::vector<std::thread> threads;
-
-    for (int i = 0; i < num; ++i) {
-        threads.emplace_back(rknn_utils_init, model_infos[i]);
-    }
-
-    for (auto& t : threads) {
-        t.join();
-    }
-    // std::cout << "Main thread exits." << std::endl;
-
-    int init_flag = 0;
-    init_flag = model_infos[0]->init_flag;
-    for (int i = 1; i < num; i++) {
-        if (init_flag != model_infos[i]->init_flag) {
-            printf("model init failed, all model should have same init_flag\n");
-            return -1;
-        }
-    }
-
-#ifdef RKNN_INTERNAL_REUSE
-    if (init_flag == RKNN_FLAG_INTERNAL_ALLOC_OUTSIDE) {
-        uint32_t max_internal_size = 0;
-        for (int i = 0; i < num; i++) {
-            if (model_infos[i]->mem_size.total_internal_size > max_internal_size) {
-                max_internal_size = model_infos[i]->mem_size.total_internal_size;
-            }
-        }
-
-        model_infos[0]->internal_mem_max = rknn_create_mem(model_infos[0]->ctx, max_internal_size);
-
-    // internal_mem[n] = rknn_create_mem_from_fd(ctx[n], internal_mem_max->fd,
-    //                                           internal_mem_max->virt_addr, mem_size[n].total_internal_size, 0);
-    // ret = rknn_set_internal_mem(ctx[n], internal_mem[n]);
-
-        rknn_tensor_mem* mem_max;
-        mem_max = model_infos[0]->internal_mem_max;
-        for (int i = 0; i < num; i++) {
-            model_infos[i]->internal_mem_outside = rknn_create_mem_from_fd(
-                model_infos[i]->ctx, mem_max->fd, mem_max->virt_addr, model_infos[i]->mem_size.total_internal_size, 0);
-            ret = rknn_set_internal_mem(model_infos[i]->ctx, model_infos[i]->internal_mem_outside);
-            if (ret < 0) {
-                printf("rknn_set_internal_mem fail! ret=%d\n", ret);
-            }
-
-            printf("internal cma info: virt = %p, phy=0x%lx, fd =%d, size=%d\n",
-                    model_infos[i]->internal_mem_outside->virt_addr,
-                    model_infos[i]->internal_mem_outside->phys_addr,
-                    model_infos[i]->internal_mem_outside->fd,
-                    model_infos[i]->internal_mem_outside->size);
-        }
-    }
-#endif
 
     return 0;
 }

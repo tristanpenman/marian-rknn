@@ -41,8 +41,8 @@ int read_user_input(char* buffer)
 
 int main(int argc, char **argv)
 {
-    if (argc < 3) {
-        printf("%s <encoder_path> <decoder_path> <sentence>\n", argv[0]);
+    if (argc < 5) {
+        printf("%s <encoder_path> <decoder_path> <source_spm> <target_spm> <sentence ...>\n", argv[0]);
         return -1;
     }
 
@@ -50,16 +50,10 @@ int main(int argc, char **argv)
 
     const char *encoder_path = argv[1];
     const char *decoder_path = argv[2];
+    const char* source_spm_path = argv[3];
+    const char* target_spm_path = argv[4];
 
-    const char* token_embed_path = "./model/token_embed.bin";
-    const char* pos_embed_path = "./model/position_embed.bin";
-
-    const char* source_spm_path = "./model/source.spm";
-    const char* target_spm_path = "./model/target.spm";
-
-    int ret;
     rknn_marian_rknn_context_t rknn_app_ctx;
-    memset(&rknn_app_ctx, 0, sizeof(rknn_marian_rknn_context_t));
 
     char *input_strings = (char *)malloc(MAX_USER_INPUT_LEN);
     char *output_strings = (char *)malloc(MAX_USER_INPUT_LEN);
@@ -68,11 +62,9 @@ int main(int argc, char **argv)
 
     bool is_receipt = false;
 
-    ret = init_marian_rknn_model(
+    int ret = init_marian_rknn_model(
         encoder_path,
         decoder_path,
-        token_embed_path,
-        pos_embed_path,
         source_spm_path,
         target_spm_path,
         &rknn_app_ctx);
@@ -83,9 +75,9 @@ int main(int argc, char **argv)
     }
 
     // receipt string to translate
-    if (argc > 3) {
+    if (argc > 5) {
         is_receipt = true;
-        for (int i = 3; i < argc; i++) {
+        for (int i = 5; i < argc; i++) {
             strcat(input_strings, argv[i]);
             strcat(input_strings, " ");
         }

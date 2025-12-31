@@ -4,14 +4,14 @@
 
 #include <rknn_api.h>
 
-#define _DEMO_NOT_EXITS_FMT -1
-
-typedef enum {
+enum API_TYPE
+{
     NORMAL_API = 0,
-    ZERO_COPY_API,
-} API_TYPE;
+    ZERO_COPY_API
+};
 
-typedef struct _RKNN_UTILS_INPUT_PARAM {
+struct RKNN_UTILS_INPUT_PARAM
+{
     /*
         RKNN_INPUT has follow param:
         index, buf, size, pass_through, fmt, type
@@ -33,16 +33,17 @@ typedef struct _RKNN_UTILS_INPUT_PARAM {
     API_TYPE api_type;
     bool enable = false;
     bool _already_init = false;
-} RKNN_UTILS_INPUT_PARAM;
+};
 
-typedef struct _RKNN_UTILS_OUTPUT_PARAM {
+struct RKNN_UTILS_OUTPUT_PARAM
+{
     uint8_t want_float;
     API_TYPE api_type;
     bool enable = false;
     bool _already_init = false;
-} RKNN_UTILS_OUTPUT_PARAM;
+};
 
-typedef struct _MODEL_INFO
+struct MODEL_INFO
 {
     const char* m_path = nullptr;
     rknn_context ctx;
@@ -72,10 +73,8 @@ typedef struct _MODEL_INFO
     rknn_mem_size mem_size;
     rknn_tensor_mem* internal_mem_outside = nullptr;
     rknn_tensor_mem* internal_mem_max = nullptr;
-} MODEL_INFO;
+};
 
-// static void dump_tensor_attr(rknn_tensor_attr *attr);
-void dump_tensor_attr(rknn_tensor_attr *attr);
 int rknn_utils_get_type_size(rknn_tensor_type type);
 
 int rknn_utils_init(MODEL_INFO* model_info);
@@ -87,13 +86,7 @@ int rknn_utils_init_output_buffer(MODEL_INFO* model_info, int node_index, API_TY
 int rknn_utils_init_input_buffer_all(MODEL_INFO* model_info, API_TYPE default_api_type, rknn_tensor_type default_t_type);
 int rknn_utils_init_output_buffer_all(MODEL_INFO* model_info, API_TYPE default_api_type, uint8_t default_want_float);
 
-// order is: x -> model_top -> model_bottom -> result
-int rknn_utils_connect_models_node(MODEL_INFO* model_top, int top_out_index, MODEL_INFO* model_bottom, int bottom_in_index);
 int rknn_utils_release(MODEL_INFO* model_info);
-
-// for native process
-int offset_nchw_2_nc1hwc2(rknn_tensor_attr *src_attr, rknn_tensor_attr *native_attr, int offset, bool batch);
 
 int rknn_utils_query_dynamic_input(MODEL_INFO* model_info);
 int rknn_utils_reset_dynamic_input(MODEL_INFO* model_info, int dynamic_shape_group_index);
-int rknn_utils_thread_init(MODEL_INFO** model_infos, int num);

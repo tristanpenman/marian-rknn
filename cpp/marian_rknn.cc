@@ -24,61 +24,6 @@
 #include "rknn_utils.h"
 #include "type_half.h"
 
-int token_embedding(float *token_embed, float *position_embed, int *tokens, int len, float *embedding, int pad_token_id)
-{
-    float scale = sqrt(EMBEDDING_DIM);
-    int pad = 1;
-    for (int i = 0; i < len; i++) {
-        for (int j = 0; j < EMBEDDING_DIM; j++) {
-            embedding[i * EMBEDDING_DIM + j] = token_embed[tokens[i] * EMBEDDING_DIM + j] * scale;
-        }
-    }
-
-    for (int i = 0; i < len; i++) {
-        if (tokens[i] != pad_token_id) {
-            pad++;
-        } else {
-            pad = 1;
-        }
-
-        for (int j = 0; j < EMBEDDING_DIM; j++) {
-            embedding[i * EMBEDDING_DIM + j] += position_embed[EMBEDDING_DIM * pad + j];
-        }
-    }
-
-    return 0;
-}
-
-// 1x4x16x64 -> 1x15x64x4, nchw -> nhwc
-int preprocess_prev_key_value(float *prev_data, float *src_output_data, int decoder_len)
-{
-    float mid_data[decoder_len * EMBEDDING_DIM];
-
-    // 1x4x16x64->1x16x64x4
-    for (int s = 0; s < decoder_len * EMBEDDING_DIM / HEAD_NUM; s++) {
-        for (int h = 0; h < HEAD_NUM; h++) {
-            mid_data[s*HEAD_NUM+h] = src_output_data[h*decoder_len*EMBEDDING_DIM/HEAD_NUM+s];
-        }
-    }
-
-    // 1x16x64x4->1x15x64x4
-    memcpy(prev_data, mid_data+EMBEDDING_DIM, (decoder_len-1)*EMBEDDING_DIM*sizeof(float));
-    return 0;
-}
-
-int load_bin_fp32(const char* filename, float* data, int len)
-{
-    FILE *fp_token_embed = fopen(filename, "rb");
-    if (fp_token_embed != NULL) {
-        fread(data, sizeof(float), len, fp_token_embed);
-        fclose(fp_token_embed);
-    } else {
-        printf("Open %s fail!\n", filename);
-        return -1;
-    }
-    return 0;
-}
-
 int rknn_nmt_process(
     rknn_marian_rknn_context_t* app_ctx,
     int* input_token,
@@ -149,9 +94,7 @@ int rknn_nmt_process(
         }
     }
 
-    token_embedding(app_ctx->nmt_tokens.enc_token_embed, app_ctx->nmt_tokens.enc_pos_embed, input_token_sorted, app_ctx->enc_len, enc_embedding, app_ctx->pad_token_id);
-    float_to_half_array(enc_embedding, (half*)(app_ctx->enc.input_mem[0]->virt_addr), app_ctx->enc.in_attr[0].n_elems);
-    float_to_half_array(enc_mask_expand, (half*)(app_ctx->enc.input_mem[1]->virt_addr), app_ctx->enc.in_attr[1].n_elems);
+    // TODO: TOKEN EMBEDDING WAS HERE
 
     // Run
     timer.tik();
@@ -184,8 +127,8 @@ int rknn_nmt_process(
     // decoder run
     timer_total.tik();
     for (int num_iter = 0; num_iter < app_ctx->dec_len; num_iter++) {
-        token_embedding(app_ctx->nmt_tokens.dec_token_embed, app_ctx->nmt_tokens.dec_pos_embed, output_token, num_iter+1, dec_embedding, app_ctx->pad_token_id);
-        float_to_half_array(dec_embedding + num_iter*EMBEDDING_DIM, (half*)(app_ctx->dec.input_mem[0]->virt_addr), app_ctx->dec.in_attr[0].n_elems);
+
+        // TODO: TOKEN EMBEDDING WAS HERE
 
         float mask;
         for (int j = 0; j < app_ctx->dec_len; j++) {
@@ -249,8 +192,7 @@ int rknn_nmt_process(
                 max = index;
             }
         }
-        //debug
-        // printf("argmax - index %d, value %f\n", max, value);
+
         output_token[num_iter + 1] = max;
         if (max == app_ctx->eos_token_id) {
             break;
@@ -280,14 +222,11 @@ int rknn_nmt_process(
 int init_marian_rknn_model(
     const char* encoder_path,
     const char* decoder_path,
-    const char* token_embed_path,
-    const char* pos_embed_path,
     const char* source_spm_path,
     const char* target_spm_path,
     rknn_marian_rknn_context_t* app_ctx)
 {
     int ret = 0;
-    memset(app_ctx, 0x00, sizeof(rknn_marian_rknn_context_t));
 
     printf("--> init rknn encoder %s\n", encoder_path);
     app_ctx->enc.m_path = encoder_path;
@@ -339,14 +278,8 @@ int init_marian_rknn_model(
         return -1;
     }
 
-    // encoder zero_copy_io_set
     printf("--> rknn_set_io_mem enc inputs; n_input=%u\n", app_ctx->enc.n_input);
     for (int input_index = 0; input_index < app_ctx->enc.n_input; input_index++) {
-        printf("calling rknn_set_io_mem %d\n", input_index);
-
-        auto &a = app_ctx->enc.in_attr[input_index];
-        printf(" - enc input %d: attr.index=%d name=%s size=%u\n", input_index, a.index, a.name, a.size);
-
         ret = rknn_set_io_mem(app_ctx->enc.ctx, app_ctx->enc.input_mem[input_index], &(app_ctx->enc.in_attr[input_index]));
         if (ret < 0) {
             printf("rknn_set_io_mem fail! ret=%d\n", ret);
@@ -377,38 +310,11 @@ int init_marian_rknn_model(
     for (int input_index=0; input_index< app_ctx->dec.n_input; input_index++) {
         if (app_ctx->dec.in_attr[input_index].fmt == RKNN_TENSOR_NHWC) {
             rknn_query(app_ctx->dec.ctx, RKNN_QUERY_NATIVE_NC1HWC2_INPUT_ATTR, &(app_ctx->dec.in_attr[input_index]), sizeof(app_ctx->dec.in_attr[input_index]));
-            // 1x4x16x64输出, nc1hwc2输出, 1x16x64x4
-            // 1x4x15x64输入, nc1hwc2输入, 1x1x15x64x8
-            // 这两块 buffer 无法对齐, 需要手动 memcpy, 如果 channel 改成 8, 则可以无需手动 memcpy
-            // app_ctx->dec.input_mem[input_index] = rknn_create_mem_from_fd(app_ctx->dec.ctx,
-            //                                                       app_ctx->dec.output_mem[input_index-3]->fd,
-            //                                                       app_ctx->dec.output_mem[input_index-3]->virt_addr,
-            //                                                       app_ctx->dec.in_attr[input_index].n_elems* sizeof(half),
-            //                                                       EMBEDDING_DIM*sizeof(half));
             app_ctx->dec.input_mem[input_index] = rknn_create_mem(app_ctx->dec.ctx, app_ctx->dec.in_attr[input_index].n_elems * sizeof(half)*2);
             app_ctx->dec.in_attr[input_index].pass_through = 1;
         }
         ret = rknn_set_io_mem(app_ctx->dec.ctx, app_ctx->dec.input_mem[input_index], &(app_ctx->dec.in_attr[input_index]));
     }
-
-    printf("--> malloc token embeddings\n");
-    int nmt_word_dict_len = app_ctx->dec.out_attr[0].n_elems/ app_ctx->dec.out_attr[0].dims[0];
-    app_ctx->nmt_tokens.enc_token_embed = (float*)malloc(nmt_word_dict_len* EMBEDDING_DIM * sizeof(float));
-    app_ctx->nmt_tokens.enc_pos_embed = (float*)malloc(POS_LEN* EMBEDDING_DIM * sizeof(float));
-
-    printf("--> load token embed: %s\n", token_embed_path);
-    ret = load_bin_fp32(token_embed_path, app_ctx->nmt_tokens.enc_token_embed, nmt_word_dict_len* EMBEDDING_DIM);
-    if (ret != 0) {
-        return -1;
-    }
-
-    printf("--> load pos embed: %s\n", pos_embed_path);
-    ret = load_bin_fp32(pos_embed_path, app_ctx->nmt_tokens.enc_pos_embed, POS_LEN* EMBEDDING_DIM);
-    if (ret != 0) {
-        return -1;
-    }
-    app_ctx->nmt_tokens.dec_token_embed = app_ctx->nmt_tokens.enc_token_embed;
-    app_ctx->nmt_tokens.dec_pos_embed = app_ctx->nmt_tokens.enc_pos_embed;
 
     auto src_status = app_ctx->spm_src.Load(source_spm_path);
     if (!src_status.ok()) {
@@ -436,11 +342,8 @@ int init_marian_rknn_model(
 
 int release_marian_rknn_model(rknn_marian_rknn_context_t* app_ctx)
 {
-    // Release
     rknn_utils_release(&app_ctx->enc);
     rknn_utils_release(&app_ctx->dec);
-    free(app_ctx->nmt_tokens.enc_token_embed);
-    free(app_ctx->nmt_tokens.enc_pos_embed);
     return 0;
 }
 

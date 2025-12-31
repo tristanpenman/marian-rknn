@@ -36,17 +36,10 @@
 
 #define MAX_USER_INPUT_LEN 1024
 
-typedef struct _NMT_TOKENS{
-    float *enc_token_embed;
-    float *enc_pos_embed;
-    float *dec_token_embed;
-    float *dec_pos_embed;
-} NMT_TOKENS;
-
-typedef struct {
+struct rknn_marian_rknn_context_t {
     MODEL_INFO enc;
     MODEL_INFO dec;
-    NMT_TOKENS nmt_tokens;
+
     sentencepiece::SentencePieceProcessor spm_src;
     sentencepiece::SentencePieceProcessor spm_tgt;
     int pad_token_id;
@@ -55,14 +48,11 @@ typedef struct {
 
     int enc_len;
     int dec_len;
-} rknn_marian_rknn_context_t;
-
+};
 
 int init_marian_rknn_model(
     const char* encoder_path,
     const char* decoder_path,
-    const char* token_embed_path,
-    const char* pos_embed_path,
     const char* source_spm_path,
     const char* target_spm_path,
     rknn_marian_rknn_context_t* app_ctx);
