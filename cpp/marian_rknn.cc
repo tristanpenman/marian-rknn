@@ -18,8 +18,8 @@
 
 #include "rknn_api.h"
 #include "sentencepiece_processor.h"
-
 #include "easy_timer.h"
+
 #include "marian_rknn.h"
 #include "rknn_utils.h"
 #include "type_half.h"
@@ -29,6 +29,7 @@
 #define MAX_SENTENCE_LEN 32
 #define MAX_WORD_NUM_IN_SENTENCE 64
 #define MAX_WORD_LEN 64
+#define VERBOSE 0
 
 // encoder input
 #define ENC_IN_INPUT_IDS_IDX 0
@@ -71,9 +72,9 @@ int rknn_nmt_process(
         }
         input_token_give++;
     }
-    printf("--> tokens given: %d\n", input_token_give);
 
     // replace trailing tokens with eos, then pad tokens
+    printf("--> tokens given (%d): ", input_token_give);
     int input_token_sorted[app_ctx->enc_len];
     for (int i = 0; i < app_ctx->enc_len; i++) {
         if (i < input_token_give) {
@@ -91,7 +92,7 @@ int rknn_nmt_process(
     printf("\n");
 
     // attention mask includes 1s for kept tokens, 0s for masked tokens
-    printf("--> generate encoder mask\n");
+    printf("--> generate encoder mask: ");
     bool padding = false;
     for (int i = 0; i < app_ctx->enc_len; i++) {
         if (padding) {
@@ -158,7 +159,7 @@ int rknn_nmt_process(
             sizeof(int64_t) * app_ctx->dec_len
         );
 
-        printf("--> masking\n");
+        printf("--> generate decoder mask: ");
         for (int j = 0; j < app_ctx->dec_len; j++) {
             if (j > num_iter) {
                 dec_mask[j] = 0;
@@ -169,6 +170,7 @@ int rknn_nmt_process(
         }
         printf("\n");
 
+        printf("--> copy mask to decoder\n");
         memcpy(
             (float*)(app_ctx->dec.input_mem[DEC_IN_ATTENTION_MASK_IDX]->virt_addr),
             dec_mask,
@@ -234,7 +236,7 @@ int init_marian_rknn_model(
 
     printf("--> init rknn encoder %s\n", encoder_path);
     app_ctx->enc.m_path = encoder_path;
-    app_ctx->enc.verbose_log = 1;
+    app_ctx->enc.verbose_log = VERBOSE;
     ret = rknn_utils_init(&app_ctx->enc);
     if (ret != 0) {
         printf("rknn_utils_init ret=%d\n", ret);
@@ -243,7 +245,7 @@ int init_marian_rknn_model(
 
     printf("--> init rknn decoder %s\n", decoder_path);
     app_ctx->dec.m_path = decoder_path;
-    app_ctx->dec.verbose_log = 1;
+    app_ctx->dec.verbose_log = VERBOSE;
     ret = rknn_utils_init(&app_ctx->dec);
     if (ret != 0) {
         printf("rknn_utils_init ret=%d\n", ret);

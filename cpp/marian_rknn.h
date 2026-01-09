@@ -18,9 +18,7 @@
 #include "sentencepiece_processor.h"
 
 #include "rknn_api.h"
-#include "common.h"
 #include "rknn_utils.h"
-#include "easy_timer.h"
 
 #define MAX_USER_INPUT_LEN 1024
 
