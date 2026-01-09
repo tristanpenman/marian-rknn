@@ -22,18 +22,6 @@
 #include "rknn_utils.h"
 #include "easy_timer.h"
 
-#define HEAD_NUM 4
-#define EMBEDDING_DIM 256
-#define DECODER_LAYER_NUM 3
-#define MAX_SENTENCE_LEN 16
-
-#define POS_LEN 1026
-
-#define ENCODER_INPUT_TOKEN_RIGHTSIDE_ALIGN
-
-#define MAX_WORD_NUM_IN_SENTENCE 64
-#define MAX_WORD_LEN 64
-
 #define MAX_USER_INPUT_LEN 1024
 
 struct rknn_marian_rknn_context_t {

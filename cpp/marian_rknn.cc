@@ -24,6 +24,27 @@
 #include "rknn_utils.h"
 #include "type_half.h"
 
+#define EMBEDDING_DIM 512
+#define DECODER_LAYER_NUM 6
+#define MAX_SENTENCE_LEN 32
+#define MAX_WORD_NUM_IN_SENTENCE 64
+#define MAX_WORD_LEN 64
+
+// encoder input
+#define ENC_IN_INPUT_IDS_IDX 0
+#define ENC_IN_ATTENTION_MASK_IDX 1
+
+// encoder output
+#define ENC_OUT_ENCODER_HIDDEN_STATES 0
+
+// decoder input
+#define DEC_IN_INPUT_IDS_IDX 0
+#define DEC_IN_ATTENTION_MASK_IDX 1
+#define DEC_IN_ENCODER_HIDDEN_STATES 2
+
+// decoder output
+#define DEC_OUT_DECODER_OUTPUT 0
+
 int rknn_nmt_process(
     rknn_marian_rknn_context_t* app_ctx,
     int* input_token,
@@ -34,23 +55,15 @@ int rknn_nmt_process(
     TIMER timer;
     TIMER timer_total;
 
-    // share max buffer
-    float enc_embedding[app_ctx->enc_len * EMBEDDING_DIM];
-    float dec_embedding[app_ctx->dec_len * EMBEDDING_DIM];
-    float enc_mask[app_ctx->enc_len];
-    float dec_mask[app_ctx->dec_len];
-    int input_token_sorted[app_ctx->enc_len];
-    memset(enc_embedding, 0x00, sizeof(enc_embedding));
-    memset(dec_embedding, 0x00, sizeof(dec_embedding));
-    memset(enc_mask, 0x00, sizeof(enc_mask));
-    memset(dec_mask, 0x00, sizeof(dec_mask));
+    // encoder attention mask
+    int64_t enc_mask[app_ctx->enc_len];
+    memset(enc_mask, 0x00, sizeof(int64_t) * app_ctx->enc_len);
 
-    // init prev key
-    float prev_key[DECODER_LAYER_NUM][(app_ctx->dec_len-1) * EMBEDDING_DIM];
-    float prev_value[DECODER_LAYER_NUM][(app_ctx->dec_len-1) * EMBEDDING_DIM];
-    memset(prev_key, 0x00, sizeof(prev_key));
-    memset(prev_value, 0x00, sizeof(prev_value));
+    // decoder attention mask
+    int64_t dec_mask[app_ctx->dec_len];
+    memset(dec_mask, 0x00, sizeof(int64_t) * app_ctx->dec_len);
 
+    // count tokens
     int input_token_give = 0;
     for (int i=0; i<app_ctx->enc_len; i++) {
         if (input_token[i] <= 0 || input_token[i] == app_ctx->pad_token_id) {
@@ -58,45 +71,49 @@ int rknn_nmt_process(
         }
         input_token_give++;
     }
-#ifdef ENCODER_INPUT_TOKEN_RIGHTSIDE_ALIGN
-    // working as [22,33,1,1,1,1] -> [1,1,1,22,33,2]
-    memset(input_token_sorted, 0, app_ctx->enc_len*sizeof(int));
-    input_token_sorted[app_ctx->enc_len-1] = app_ctx->eos_token_id;
-    for (int i=0; i<input_token_give; i++) {
-        input_token_sorted[app_ctx->enc_len-1 - input_token_give +i] = input_token[i];
-    }
-#else
-    // working as [22,33,1,1,1,1] -> [22,33,2,1,1,1]
-    input_token_sorted[token_list_len] = app_ctx->eos_token_id;
-#endif
+    printf("--> tokens given: %d\n", input_token_give);
 
-    // gen encoder mask
-    printf("input tokens(all should > 0):\n");
-    for (int i=0; i< app_ctx->enc_len; i++) {
-        if (input_token_sorted[i] == 0) {
-            input_token_sorted[i] = app_ctx->pad_token_id;
-            enc_mask[i] = 1;
-        } else if (input_token_sorted[i] == app_ctx->pad_token_id) {
-            enc_mask[i] = 1;
+    // replace trailing tokens with eos, then pad tokens
+    int input_token_sorted[app_ctx->enc_len];
+    for (int i = 0; i < app_ctx->enc_len; i++) {
+        if (i < input_token_give) {
+            // copy original token
+            input_token_sorted[i] = input_token[i];
+        } else if (i == input_token_give) {
+            // terminate with <eos>
+            input_token_sorted[i] = app_ctx->eos_token_id;;
         } else {
-            enc_mask[i] = 0;
+            // all other characters are <pad> tokens
+            input_token_sorted[i] = app_ctx->pad_token_id;
         }
         printf(" %d", input_token_sorted[i]);
     }
     printf("\n");
 
-    // expand_encoder_mask
-    float enc_mask_expand[app_ctx->enc_len * app_ctx->enc_len];
-    memset(enc_mask_expand, 0x00, sizeof(enc_mask_expand));
-    for (int i=0; i<app_ctx->enc_len; i++) {
-        for (int j=0; j<app_ctx->enc_len; j++) {
-            enc_mask_expand[i*app_ctx->enc_len+j] = enc_mask[j];
+    // attention mask includes 1s for kept tokens, 0s for masked tokens
+    printf("--> generate encoder mask\n");
+    bool padding = false;
+    for (int i = 0; i < app_ctx->enc_len; i++) {
+        if (padding) {
+            enc_mask[i] = 0;
+        } else {
+            enc_mask[i] = 1;
+            if (input_token_sorted[i] == app_ctx->eos_token_id) {
+                padding = true;
+            }
         }
+        printf(" %d", enc_mask[i]);
     }
+    printf("\n");
 
-    // TODO: TOKEN EMBEDDING WAS HERE
+    printf("--> copy mask to encoder\n");
+    memcpy(
+        app_ctx->enc.input_mem[ENC_IN_ATTENTION_MASK_IDX]->virt_addr,
+        enc_mask,
+        app_ctx->enc.out_attr[ENC_IN_ATTENTION_MASK_IDX].size
+    );
 
-    // Run
+    // Run encoder
     timer.tik();
     ret = rknn_run(app_ctx->enc.ctx, nullptr);
     if (ret < 0) {
@@ -112,68 +129,54 @@ int rknn_nmt_process(
 
     output_token[0] = app_ctx->bos_token_id;
 
-    printf("reset decoder input and output mem\n");
+    printf("--> reset decoder input and output mem\n");
     for (int input_index = 0; input_index < app_ctx->dec.n_input; input_index++) {
-        memset(app_ctx->dec.input_mem[input_index]->virt_addr, 0, app_ctx->dec.in_attr[input_index].n_elems * sizeof(half));
+        memset(app_ctx->dec.input_mem[input_index]->virt_addr, 0, app_ctx->dec.in_attr[input_index].size);
     }
     for (int output_index = 0; output_index < app_ctx->dec.n_output; output_index++) {
-        memset(app_ctx->dec.output_mem[output_index]->virt_addr, 0, app_ctx->dec.out_attr[output_index].n_elems * sizeof(half));
+        memset(app_ctx->dec.output_mem[output_index]->virt_addr, 0, app_ctx->dec.out_attr[output_index].size);
     }
 
-    // copy output from encoder to decoder
-    memcpy(app_ctx->dec.input_mem[1]->virt_addr, app_ctx->enc.output_mem[0]->virt_addr, app_ctx->enc.out_attr[0].n_elems * sizeof(half));
-    memcpy(app_ctx->dec.input_mem[2]->virt_addr, app_ctx->enc.input_mem[1]->virt_addr, app_ctx->enc.in_attr[1].n_elems * sizeof(half));
+    printf("--> copy output from encoder to decoder\n");
+    memcpy(
+        app_ctx->dec.input_mem[DEC_IN_ENCODER_HIDDEN_STATES]->virt_addr,
+        app_ctx->enc.output_mem[ENC_OUT_ENCODER_HIDDEN_STATES]->virt_addr,
+        app_ctx->enc.out_attr[ENC_OUT_ENCODER_HIDDEN_STATES].size
+    );
 
-    // decoder run
+    printf("--> setup decoder input state (first token = <BOS>)\n");
+    int64_t decoder_input_ids[app_ctx->dec_len];
+    memset(decoder_input_ids, 0, sizeof(int64_t) * app_ctx->dec_len);
+    decoder_input_ids[0] = app_ctx->bos_token_id;
+
     timer_total.tik();
     for (int num_iter = 0; num_iter < app_ctx->dec_len; num_iter++) {
+        printf("--> decoder iteration %d\n", num_iter);
+        memcpy(
+            app_ctx->dec.input_mem[DEC_IN_INPUT_IDS_IDX]->virt_addr,
+            decoder_input_ids,
+            sizeof(int64_t) * app_ctx->dec_len
+        );
 
-        // TODO: TOKEN EMBEDDING WAS HERE
-
-        float mask;
+        printf("--> masking\n");
         for (int j = 0; j < app_ctx->dec_len; j++) {
-            if (j >= app_ctx->dec_len - 1 - num_iter) {
-                mask = 0;
+            if (j > num_iter) {
+                dec_mask[j] = 0;
             } else {
-                mask = 1;
+                dec_mask[j] = 1;
             }
-            dec_mask[j] = mask;
+            printf(" %d", dec_mask[j]);
         }
-        float_to_half_array(dec_mask, (half*)(app_ctx->dec.input_mem[3]->virt_addr), app_ctx->dec.in_attr[3].n_elems);
+        printf("\n");
 
-        // incremental copy
-        if (num_iter != 0) {
-            for (int i = 0; i < DECODER_LAYER_NUM*2; i++) {
-                memset(app_ctx->dec.input_mem[4+i]->virt_addr, 0, app_ctx->dec.in_attr[4+i].n_elems * sizeof(half));
-                int increment_input_index = 4+i;
-                int increment_output_index = 1+i;
-                for (int h=0; h < app_ctx->dec.in_attr[increment_input_index].dims[1]; h++) {
-                    for (int w=0; w < app_ctx->dec.in_attr[increment_input_index].dims[2]; w++) {
-                        int input_offset = 0;
-                        int output_offset = 0;
-                        int cpy_size = 0;
-                        // input dims as nhwc
-                        input_offset += h * app_ctx->dec.in_attr[increment_input_index].dims[2] * app_ctx->dec.in_attr[increment_input_index].dims[3];
-                        input_offset += w * app_ctx->dec.in_attr[increment_input_index].dims[3];
-
-                        cpy_size = app_ctx->dec.in_attr[increment_input_index].dims[3];
-
-                        // output dims as nc1hwc2
-                        output_offset += (h+1) * app_ctx->dec.out_attr[increment_output_index].dims[3] * app_ctx->dec.out_attr[increment_output_index].dims[4];
-                        output_offset += w * app_ctx->dec.out_attr[increment_output_index].dims[4];
-
-                        input_offset = input_offset * sizeof(half);
-                        output_offset = output_offset * sizeof(half);
-                        cpy_size = cpy_size * sizeof(half);
-                        memcpy((char*)app_ctx->dec.input_mem[increment_input_index]->virt_addr + input_offset,
-                            (char*)app_ctx->dec.output_mem[increment_output_index]->virt_addr + output_offset,
-                            cpy_size);
-                    }
-                }
-            }
-        }
+        memcpy(
+            (float*)(app_ctx->dec.input_mem[DEC_IN_ATTENTION_MASK_IDX]->virt_addr),
+            dec_mask,
+            app_ctx->dec.in_attr[DEC_IN_ATTENTION_MASK_IDX].n_elems
+        );
 
         // Run
+        printf("--> rknn_run\n");
         timer.tik();
         ret = rknn_run(app_ctx->dec.ctx, nullptr);
         timer.tok();
@@ -183,8 +186,9 @@ int rknn_nmt_process(
         }
 
         // argmax
+        printf("--> argmax\n");
         int max = 0;
-        half* decoder_result_array = (half*)app_ctx->dec.output_mem[0]->virt_addr;
+        half* decoder_result_array = (half*)app_ctx->dec.output_mem[DEC_OUT_DECODER_OUTPUT]->virt_addr;
         float value = half_to_float(decoder_result_array[0]);
         for (int index = 1; index < app_ctx->dec.out_attr[0].n_elems/ app_ctx->dec.out_attr[0].dims[0]; index++) {
             if (half_to_float(decoder_result_array[index]) > value) {
@@ -246,10 +250,10 @@ int init_marian_rknn_model(
         return -1;
     }
 
-    app_ctx->enc_len = app_ctx->enc.in_attr[0].dims[1];
+    app_ctx->enc_len = app_ctx->enc.in_attr[ENC_IN_INPUT_IDS_IDX].dims[1];
     printf("--> enc len: %d\n", app_ctx->enc_len);
 
-    app_ctx->dec_len = app_ctx->dec.in_attr[3].dims[1];
+    app_ctx->dec_len = app_ctx->dec.in_attr[DEC_IN_ATTENTION_MASK_IDX].dims[1];
     printf("--> dec len: %d\n", app_ctx->dec_len);
 
     printf("--> init encoder buffers\n");
@@ -301,7 +305,7 @@ int init_marian_rknn_model(
         if (app_ctx->dec.out_attr[output_index].fmt == RKNN_TENSOR_NCHW) {
             rknn_query(app_ctx->dec.ctx, RKNN_QUERY_NATIVE_NC1HWC2_OUTPUT_ATTR, &(app_ctx->dec.out_attr[output_index]), sizeof(app_ctx->dec.out_attr[output_index]));
             rknn_destroy_mem(app_ctx->dec.ctx, app_ctx->dec.output_mem[output_index]);
-            app_ctx->dec.output_mem[output_index] = rknn_create_mem(app_ctx->dec.ctx, app_ctx->dec.out_attr[output_index].n_elems * sizeof(half)*2);
+            app_ctx->dec.output_mem[output_index] = rknn_create_mem(app_ctx->dec.ctx, app_ctx->dec.out_attr[output_index].n_elems * sizeof(float)*2);
         }
         ret = rknn_set_io_mem(app_ctx->dec.ctx, app_ctx->dec.output_mem[output_index], &(app_ctx->dec.out_attr[output_index]));
     }
@@ -310,32 +314,36 @@ int init_marian_rknn_model(
     for (int input_index=0; input_index< app_ctx->dec.n_input; input_index++) {
         if (app_ctx->dec.in_attr[input_index].fmt == RKNN_TENSOR_NHWC) {
             rknn_query(app_ctx->dec.ctx, RKNN_QUERY_NATIVE_NC1HWC2_INPUT_ATTR, &(app_ctx->dec.in_attr[input_index]), sizeof(app_ctx->dec.in_attr[input_index]));
-            app_ctx->dec.input_mem[input_index] = rknn_create_mem(app_ctx->dec.ctx, app_ctx->dec.in_attr[input_index].n_elems * sizeof(half)*2);
+            app_ctx->dec.input_mem[input_index] = rknn_create_mem(app_ctx->dec.ctx, app_ctx->dec.in_attr[input_index].n_elems * sizeof(float)*2);
             app_ctx->dec.in_attr[input_index].pass_through = 1;
         }
         ret = rknn_set_io_mem(app_ctx->dec.ctx, app_ctx->dec.input_mem[input_index], &(app_ctx->dec.in_attr[input_index]));
     }
 
+    printf("--> loading source spm\n");
     auto src_status = app_ctx->spm_src.Load(source_spm_path);
     if (!src_status.ok()) {
         printf("Failed to load source sentencepiece model: %s\n", src_status.ToString().c_str());
         return -1;
     }
+
+    printf("--> loading target spm\n");
     auto tgt_status = app_ctx->spm_tgt.Load(target_spm_path);
     if (!tgt_status.ok()) {
         printf("Failed to load target sentencepiece model: %s\n", tgt_status.ToString().c_str());
         return -1;
     }
-    int src_pad_id = app_ctx->spm_src.PieceToId("<pad>");
-    int tgt_pad_id = app_ctx->spm_tgt.PieceToId("<pad>");
-    int pad_candidate = tgt_pad_id >= 0 ? tgt_pad_id : src_pad_id;
-    app_ctx->pad_token_id = pad_candidate >= 0 ? pad_candidate : 0;
 
-    int eos_id = app_ctx->spm_tgt.PieceToId("</s>");
-    app_ctx->eos_token_id = eos_id >= 0 ? eos_id : app_ctx->pad_token_id + 1;
+    // TODO: Read these from config file
 
-    int bos_id = app_ctx->spm_tgt.PieceToId("<s>");
-    app_ctx->bos_token_id = bos_id >= 0 ? bos_id : app_ctx->pad_token_id;
+    app_ctx->pad_token_id = 59513;
+    printf("--> pad token id: %d\n", app_ctx->pad_token_id);
+
+    app_ctx->eos_token_id = 0;
+    printf("--> eos token id: %d\n", app_ctx->eos_token_id);
+
+    app_ctx->bos_token_id = 0;
+    printf("--> bos token id: %d\n", app_ctx->bos_token_id);
 
     return 0;
 }
@@ -352,25 +360,30 @@ int inference_marian_rknn_model(
     const char* input_sentence,
     char* output_sentence)
 {
+    // TODO: Remove magic number
     int token_list[100];
-    int token_list_len=0;
+    int token_list_len = 0;
     memset(token_list, 0, sizeof(token_list));
 
+    // encode tokens
     std::vector<int> encoded_tokens;
     auto status = app_ctx->spm_src.Encode(std::string(input_sentence), &encoded_tokens);
     if (!status.ok()) {
         printf("sentencepiece encode failed: %s\n", status.ToString().c_str());
         return -1;
     }
+
+    // copy and truncate tokens
     token_list_len = encoded_tokens.size();
-    if (token_list_len > (int)(sizeof(token_list)/sizeof(int))) {
+    if (token_list_len > (int)(sizeof(token_list) / sizeof(int))) {
         printf("WARNING: too many tokens (%d), truncating to %lu\n", token_list_len, sizeof(token_list)/sizeof(int));
-        token_list_len = sizeof(token_list)/sizeof(int);
+        token_list_len = sizeof(token_list) / sizeof(int);
     }
     for (int i = 0; i < token_list_len; ++i) {
         token_list[i] = encoded_tokens[i];
     }
 
+    // check input length
     int max_input_len = app_ctx->enc_len;
     if (token_list_len > max_input_len) {
         printf("\nWARNING: token_len(%d) > max_input_len(%d), only keep %d tokens!\n", token_list_len, max_input_len, max_input_len);
@@ -387,12 +400,13 @@ int inference_marian_rknn_model(
         printf("\n");
     }
 
+    // run model
     int output_token[max_input_len];
     memset(output_token, 0, sizeof(output_token));
     int output_len = 0;
     output_len = rknn_nmt_process(app_ctx, token_list, output_token);
 
-    memset(output_sentence, 0, MAX_USER_INPUT_LEN);
+    // prepare tokens for decode
     std::vector<int> decode_tokens;
     for (int i = 1; i < output_len; ++i) {
         if (output_token[i] == app_ctx->eos_token_id || output_token[i] == app_ctx->pad_token_id || output_token[i] <= 0) {
@@ -400,12 +414,18 @@ int inference_marian_rknn_model(
         }
         decode_tokens.push_back(output_token[i]);
     }
+
+    // decode tokens
     std::string decoded;
     status = app_ctx->spm_tgt.Decode(decode_tokens, &decoded);
     if (!status.ok()) {
         printf("sentencepiece decode failed: %s\n", status.ToString().c_str());
         return -1;
     }
+
+    // copy output sentence
+    memset(output_sentence, 0, MAX_USER_INPUT_LEN);
     strncpy(output_sentence, decoded.c_str(), MAX_USER_INPUT_LEN-1);
+
     return 0;
 }

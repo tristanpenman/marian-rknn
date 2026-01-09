@@ -74,6 +74,8 @@ int main(int argc, char **argv)
         goto out;
     }
 
+    printf("--> model init complete\n");
+
     // receipt string to translate
     if (argc > 5) {
         is_receipt = true;
@@ -81,6 +83,8 @@ int main(int argc, char **argv)
             strcat(input_strings, argv[i]);
             strcat(input_strings, " ");
         }
+
+        printf("--> read input from cmd line: %s\n", input_strings);
     }
 
     while (1) {
@@ -91,6 +95,8 @@ int main(int argc, char **argv)
                 break;
             }
         }
+
+        printf("--> about to run inference...\n");
 
         timer.tik();
         ret = inference_marian_rknn_model(&rknn_app_ctx, input_strings, output_strings);
