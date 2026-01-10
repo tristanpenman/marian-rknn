@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 
 import sys
+import torch
+import numpy as np
 
 from rknn.api import RKNN
 
@@ -39,7 +41,7 @@ def parse_arg():
 
     return input_path, platform, do_quant, output_path
 
-def convert(model_path, platform, do_quant, output_path, inputs, input_size_list):
+def convert_model(model_path, platform, do_quant, output_path, inputs, input_size_list):
     # Create RKNN object
     rknn = RKNN(verbose=False)
 
@@ -83,16 +85,30 @@ def convert(model_path, platform, do_quant, output_path, inputs, input_size_list
     # Release
     rknn.release()
 
+def convert_weights(input_path, output_path):
+    tensor = torch.load(input_path, weights_only=True)
+    tensor.detach().numpy().astype(np.float32).tofile(output_path)
+
 def main():
     input_path, platform, do_quant, output_path = parse_arg()
 
-    print('Converting encoder!')
-    convert(f"{input_path}/encoder.onnx", platform, do_quant,
-            f"{output_path}/encoder.rknn", ENCODER_INPUTS, ENCODER_INPUT_SIZE_LIST)
+    print('Converting encoder...')
+    convert_model(f"{input_path}/encoder.onnx", platform, do_quant,
+                  f"{output_path}/encoder.rknn", ENCODER_INPUTS, ENCODER_INPUT_SIZE_LIST)
 
-    print('Converting decoder!')
-    convert(f"{input_path}/decoder.onnx", platform, do_quant,
-            f"{output_path}/decoder.rknn", DECODER_INPUTS, DECODER_INPUT_SIZE_LIST)
+    print('Converting decoder...')
+    convert_model(f"{input_path}/decoder.onnx", platform, do_quant,
+                  f"{output_path}/decoder.rknn", DECODER_INPUTS, DECODER_INPUT_SIZE_LIST)
+
+    print('Converting LM weights...')
+    convert_weights(f"{input_path}/lm_weight.bin",
+                    f"{output_path}/lm_weight.raw")
+
+    print('Converting LM biases...')
+    convert_weights(f"{input_path}/lm_bias.bin",
+                    f"{output_path}/lm_bias.raw")
+
+    print('Done!')
 
 if __name__ == '__main__':
     main()
