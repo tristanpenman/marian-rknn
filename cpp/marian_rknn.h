@@ -22,6 +22,16 @@
 
 #define MAX_USER_INPUT_LEN 1024
 
+struct rknn_marian_lm_head_t {
+    int D;
+    int V;
+
+    float* Wt; // DxV row-major
+    float* b;  // V
+
+    void operator()(const float* hidden, float* out_logits) const;
+};
+
 struct rknn_marian_rknn_context_t {
     MODEL_INFO enc;
     MODEL_INFO dec;
@@ -35,8 +45,7 @@ struct rknn_marian_rknn_context_t {
     int enc_len;
     int dec_len;
 
-    float *lm_weight;
-    float *lm_bias;
+    rknn_marian_lm_head_t lm_head;
 };
 
 int init_marian_rknn_model(

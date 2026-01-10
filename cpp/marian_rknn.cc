@@ -27,7 +27,6 @@
 #include "file_utils.h"
 #include "marian_rknn.h"
 #include "rknn_utils.h"
-#include "type_half.h"
 
 #define EMBEDDING_DIM 512
 #define DECODER_LAYER_NUM 6
@@ -50,6 +49,19 @@
 
 // decoder output
 #define DEC_OUT_DECODER_OUTPUT 0
+
+void rknn_marian_lm_head_t::operator()(const float* hidden, float* out_logits) const
+{
+    using RowMat = Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>;
+
+    Eigen::Map<const Eigen::Matrix<float, 1, Eigen::Dynamic, Eigen::RowMajor>> h(hidden, D);
+    Eigen::Map<const RowMat> W(Wt, D, V);
+    Eigen::Map<Eigen::Matrix<float, 1, Eigen::Dynamic, Eigen::RowMajor>> y(out_logits, V);
+    Eigen::Map<const Eigen::Matrix<float, 1, Eigen::Dynamic, Eigen::RowMajor>> bias(b, V);
+
+    y.noalias() = h * W;
+    y += bias;
+}
 
 int rknn_nmt_process(
     rknn_marian_rknn_context_t* app_ctx,
@@ -182,7 +194,6 @@ int rknn_nmt_process(
             app_ctx->dec.in_attr[DEC_IN_ATTENTION_MASK_IDX].n_elems
         );
 
-        // Run
         printf("--> rknn_run\n");
         timer.tik();
         ret = rknn_run(app_ctx->dec.ctx, nullptr);
@@ -192,17 +203,21 @@ int rknn_nmt_process(
             return -1;
         }
 
-        // TODO: apply LM head
+        printf("--> apply lm_head\n");
+        std::vector<float> logits;
+        logits.resize(app_ctx->lm_head.V * app_ctx->dec_len);
+        app_ctx->lm_head(
+            (float*)(app_ctx->dec.output_mem[DEC_OUT_DECODER_OUTPUT]->virt_addr),
+            logits.data()
+        );
 
-        // argmax
         printf("--> argmax\n");
         int max = 0;
-        half* decoder_result_array = (half*)app_ctx->dec.output_mem[DEC_OUT_DECODER_OUTPUT]->virt_addr;
-        float value = half_to_float(decoder_result_array[0]);
-        for (int index = 1; index < app_ctx->dec.out_attr[0].n_elems/ app_ctx->dec.out_attr[0].dims[0]; index++) {
-            if (half_to_float(decoder_result_array[index]) > value) {
-                value = half_to_float(decoder_result_array[index]);
-                max = index;
+        float value = -INFINITY;
+        for (int i = 1; i < app_ctx->lm_head.V; i++) {
+            if (logits[i] > value) {
+                value = logits[i];
+                max = i;
             }
         }
 
@@ -345,13 +360,16 @@ int init_marian_rknn_model(
         return -1;
     }
 
+    int D = app_ctx->lm_head.D = 512;
+    int V = app_ctx->lm_head.V = 59514;
+
     printf("--> load lm weight\n");
-    app_ctx->lm_weight = (float*)(malloc(sizeof(float) * 59514 * 512));
-    read_fp32_from_file(lm_weight_path, 59514 * 512, app_ctx->lm_weight);
+    app_ctx->lm_head.Wt = (float*)(malloc(sizeof(float) * V * D));
+    read_fp32_from_file(lm_weight_path, V * D, app_ctx->lm_head.Wt);
 
     printf("--> load lm bias\n");
-    app_ctx->lm_bias = (float*)(malloc(sizeof(float) * 59514));
-    read_fp32_from_file(lm_bias_path, 59514, app_ctx->lm_bias);
+    app_ctx->lm_head.b = (float*)(malloc(sizeof(float) * V));
+    read_fp32_from_file(lm_bias_path, V, app_ctx->lm_head.b);
 
     // TODO: Read these from config file
 
@@ -372,8 +390,8 @@ int release_marian_rknn_model(rknn_marian_rknn_context_t* app_ctx)
     rknn_utils_release(&app_ctx->enc);
     rknn_utils_release(&app_ctx->dec);
 
-    free(app_ctx->lm_weight);
-    free(app_ctx->lm_bias);
+    free(app_ctx->lm_head.Wt);
+    free(app_ctx->lm_head.b);
 
     return 0;
 }
