@@ -41,10 +41,16 @@ set(LIBTIMER_INCLUDES ${TIMER_PATH})
 # Eigen
 FetchContent_Declare(eigen
   GIT_REPOSITORY https://gitlab.com/libeigen/eigen.git
-  GIT_TAG        3.4.0
+  GIT_TAG        5.0.1
 )
-
 FetchContent_MakeAvailable(eigen)
+
+# JSON for Modern C++
+FetchContent_Declare(nlohmann_json
+  GIT_REPOSITORY https://github.com/nlohmann/json.git
+  GIT_TAG        v3.12.0
+)
+FetchContent_MakeAvailable(nlohmann_json)
 
 # sentencepiece options: statically linked, no tcmalloc
 set(SPM_ENABLE_SHARED OFF CACHE BOOL INTERNAL)
@@ -78,6 +84,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     ${LIBRKNNRT}
     dl
     Eigen3::Eigen
+    nlohmann_json::nlohmann_json
     sentencepiece
 )
 

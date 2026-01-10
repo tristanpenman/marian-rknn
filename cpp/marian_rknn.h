@@ -15,14 +15,18 @@
 
 #pragma once
 
-#include "sentencepiece_processor.h"
+#include <map>
+#include <string>
 
-#include "rknn_api.h"
+#include <rknn_api.h>
+#include <sentencepiece_processor.h>
+
 #include "rknn_utils.h"
 
 #define MAX_USER_INPUT_LEN 1024
 
-struct rknn_marian_lm_head_t {
+struct rknn_marian_lm_head_t
+{
     int D;
     int V;
 
@@ -32,12 +36,16 @@ struct rknn_marian_lm_head_t {
     void operator()(const float* hidden, float* out_logits) const;
 };
 
-struct rknn_marian_rknn_context_t {
+struct rknn_marian_rknn_context_t
+{
     MODEL_INFO enc;
     MODEL_INFO dec;
 
     sentencepiece::SentencePieceProcessor spm_src;
     sentencepiece::SentencePieceProcessor spm_tgt;
+
+    std::map<std::string, int> vocab;
+
     int pad_token_id;
     int bos_token_id;
     int eos_token_id;
@@ -53,6 +61,7 @@ int init_marian_rknn_model(
     const char* decoder_path,
     const char* source_spm_path,
     const char* target_spm_path,
+    const char* vocab_path,
     const char* lm_weight_path,
     const char* lm_bias_path,
     rknn_marian_rknn_context_t* app_ctx);

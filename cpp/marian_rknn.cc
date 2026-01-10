@@ -18,12 +18,14 @@
 
 // external
 #include <Eigen/Dense>
+#include <nlohmann/json.hpp>
 #include <sentencepiece_processor.h>
 
 // thirdparty
 #include "easy_timer.h"
 #include "rknn_api.h"
 
+// internal
 #include "file_utils.h"
 #include "marian_rknn.h"
 #include "rknn_utils.h"
@@ -252,6 +254,7 @@ int init_marian_rknn_model(
     const char* decoder_path,
     const char* source_spm_path,
     const char* target_spm_path,
+    const char* vocab_path,
     const char* lm_weight_path,
     const char* lm_bias_path,
     rknn_marian_rknn_context_t* app_ctx)
@@ -353,12 +356,18 @@ int init_marian_rknn_model(
         return -1;
     }
 
+    auto ps = app_ctx->spm_src.GetPieceSize();
+    printf("--> source piece size: %d\n", ps);
+
     printf("--> loading target spm\n");
     auto tgt_status = app_ctx->spm_tgt.Load(target_spm_path);
     if (!tgt_status.ok()) {
         printf("Failed to load target sentencepiece model: %s\n", tgt_status.ToString().c_str());
         return -1;
     }
+
+    ps = app_ctx->spm_tgt.GetPieceSize();
+    printf("--> target piece size: %d\n", ps);
 
     int D = app_ctx->lm_head.D = 512;
     int V = app_ctx->lm_head.V = 59514;
@@ -370,6 +379,8 @@ int init_marian_rknn_model(
     printf("--> load lm bias\n");
     app_ctx->lm_head.b = (float*)(malloc(sizeof(float) * V));
     read_fp32_from_file(lm_bias_path, V, app_ctx->lm_head.b);
+
+    // TODO: Load vocab from JSON
 
     // TODO: Read these from config file
 
@@ -408,11 +419,15 @@ int inference_marian_rknn_model(
 
     // encode tokens
     std::vector<int> encoded_tokens;
-    auto status = app_ctx->spm_src.Encode(std::string(input_sentence), &encoded_tokens);
-    if (!status.ok()) {
-        printf("sentencepiece encode failed: %s\n", status.ToString().c_str());
-        return -1;
+    auto pieces = app_ctx->spm_src.EncodeAsPieces(std::string(input_sentence));
+    printf("--> pieces:");
+    for (auto piece : pieces) {
+        printf(" %s", piece.c_str());
     }
+    printf("\n");
+
+    // TODO: apply vocab
+    encoded_tokens.resize(pieces.size());
 
     // copy and truncate tokens
     token_list_len = encoded_tokens.size();
@@ -458,7 +473,7 @@ int inference_marian_rknn_model(
 
     // decode tokens
     std::string decoded;
-    status = app_ctx->spm_tgt.Decode(decode_tokens, &decoded);
+    auto status = app_ctx->spm_tgt.Decode(decode_tokens, &decoded);
     if (!status.ok()) {
         printf("sentencepiece decode failed: %s\n", status.ToString().c_str());
         return -1;
