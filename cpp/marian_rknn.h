@@ -34,6 +34,9 @@ struct rknn_marian_rknn_context_t {
 
     int enc_len;
     int dec_len;
+
+    float *lm_weight;
+    float *lm_bias;
 };
 
 int init_marian_rknn_model(
@@ -41,6 +44,8 @@ int init_marian_rknn_model(
     const char* decoder_path,
     const char* source_spm_path,
     const char* target_spm_path,
+    const char* lm_weight_path,
+    const char* lm_bias_path,
     rknn_marian_rknn_context_t* app_ctx);
 
 int release_marian_rknn_model(

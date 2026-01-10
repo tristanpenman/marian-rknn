@@ -41,8 +41,8 @@ int read_user_input(char* buffer)
 
 int main(int argc, char **argv)
 {
-    if (argc < 5) {
-        printf("%s <encoder_path> <decoder_path> <source_spm> <target_spm> <sentence ...>\n", argv[0]);
+    if (argc < 7) {
+        printf("%s <encoder_path> <decoder_path> <source_spm> <target_spm> <lm_weight> <lm_bias> <sentence ...>\n", argv[0]);
         return -1;
     }
 
@@ -50,8 +50,10 @@ int main(int argc, char **argv)
 
     const char *encoder_path = argv[1];
     const char *decoder_path = argv[2];
-    const char* source_spm_path = argv[3];
-    const char* target_spm_path = argv[4];
+    const char *source_spm_path = argv[3];
+    const char *target_spm_path = argv[4];
+    const char *lm_weight_path = argv[5];
+    const char *lm_bias_path = argv[6];
 
     rknn_marian_rknn_context_t rknn_app_ctx;
 
@@ -67,6 +69,8 @@ int main(int argc, char **argv)
         decoder_path,
         source_spm_path,
         target_spm_path,
+        lm_weight_path,
+        lm_bias_path,
         &rknn_app_ctx);
 
     if (ret != 0) {
@@ -77,9 +81,9 @@ int main(int argc, char **argv)
     printf("--> model init complete\n");
 
     // receipt string to translate
-    if (argc > 5) {
+    if (argc > 7) {
         is_receipt = true;
-        for (int i = 5; i < argc; i++) {
+        for (int i = 7; i < argc; i++) {
             strcat(input_strings, argv[i]);
             strcat(input_strings, " ");
         }

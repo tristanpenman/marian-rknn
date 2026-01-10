@@ -16,10 +16,12 @@
 #include <algorithm>
 #include <cmath>
 
+// thirdparty
+#include "easy_timer.h"
 #include "rknn_api.h"
 #include "sentencepiece_processor.h"
-#include "easy_timer.h"
 
+#include "file_utils.h"
 #include "marian_rknn.h"
 #include "rknn_utils.h"
 #include "type_half.h"
@@ -187,6 +189,8 @@ int rknn_nmt_process(
             return -1;
         }
 
+        // TODO: apply LM head
+
         // argmax
         printf("--> argmax\n");
         int max = 0;
@@ -230,6 +234,8 @@ int init_marian_rknn_model(
     const char* decoder_path,
     const char* source_spm_path,
     const char* target_spm_path,
+    const char* lm_weight_path,
+    const char* lm_bias_path,
     rknn_marian_rknn_context_t* app_ctx)
 {
     int ret = 0;
@@ -293,7 +299,7 @@ int init_marian_rknn_model(
         }
     }
 
-    printf("--> rknn_set_io_mem enc outputs\n");
+    printf("--> rknn_set_io_mem enc outputs; n_output=%u\n", app_ctx->enc.n_output);
     for (int output_index=0; output_index < app_ctx->enc.n_output; output_index++) {
         ret = rknn_set_io_mem(app_ctx->enc.ctx, app_ctx->enc.output_mem[output_index], &(app_ctx->enc.out_attr[output_index]));
         if (ret < 0) {
@@ -302,17 +308,7 @@ int init_marian_rknn_model(
         }
     }
 
-    printf("--> rknn_set_io_mem dec outputs\n");
-    for (int output_index=0; output_index< app_ctx->dec.n_output; output_index++) {
-        if (app_ctx->dec.out_attr[output_index].fmt == RKNN_TENSOR_NCHW) {
-            rknn_query(app_ctx->dec.ctx, RKNN_QUERY_NATIVE_NC1HWC2_OUTPUT_ATTR, &(app_ctx->dec.out_attr[output_index]), sizeof(app_ctx->dec.out_attr[output_index]));
-            rknn_destroy_mem(app_ctx->dec.ctx, app_ctx->dec.output_mem[output_index]);
-            app_ctx->dec.output_mem[output_index] = rknn_create_mem(app_ctx->dec.ctx, app_ctx->dec.out_attr[output_index].n_elems * sizeof(float)*2);
-        }
-        ret = rknn_set_io_mem(app_ctx->dec.ctx, app_ctx->dec.output_mem[output_index], &(app_ctx->dec.out_attr[output_index]));
-    }
-
-    printf("--> rknn_set_io_mem dec inputs\n");
+    printf("--> rknn_set_io_mem dec inputs; n_input=%u\n", app_ctx->dec.n_input);
     for (int input_index=0; input_index< app_ctx->dec.n_input; input_index++) {
         if (app_ctx->dec.in_attr[input_index].fmt == RKNN_TENSOR_NHWC) {
             rknn_query(app_ctx->dec.ctx, RKNN_QUERY_NATIVE_NC1HWC2_INPUT_ATTR, &(app_ctx->dec.in_attr[input_index]), sizeof(app_ctx->dec.in_attr[input_index]));
@@ -320,6 +316,16 @@ int init_marian_rknn_model(
             app_ctx->dec.in_attr[input_index].pass_through = 1;
         }
         ret = rknn_set_io_mem(app_ctx->dec.ctx, app_ctx->dec.input_mem[input_index], &(app_ctx->dec.in_attr[input_index]));
+    }
+
+    printf("--> rknn_set_io_mem dec outputs; n_output=%u\n", app_ctx->dec.n_output);
+    for (int output_index=0; output_index< app_ctx->dec.n_output; output_index++) {
+        if (app_ctx->dec.out_attr[output_index].fmt == RKNN_TENSOR_NCHW) {
+            rknn_query(app_ctx->dec.ctx, RKNN_QUERY_NATIVE_NC1HWC2_OUTPUT_ATTR, &(app_ctx->dec.out_attr[output_index]), sizeof(app_ctx->dec.out_attr[output_index]));
+            rknn_destroy_mem(app_ctx->dec.ctx, app_ctx->dec.output_mem[output_index]);
+            app_ctx->dec.output_mem[output_index] = rknn_create_mem(app_ctx->dec.ctx, app_ctx->dec.out_attr[output_index].n_elems * sizeof(float)*2);
+        }
+        ret = rknn_set_io_mem(app_ctx->dec.ctx, app_ctx->dec.output_mem[output_index], &(app_ctx->dec.out_attr[output_index]));
     }
 
     printf("--> loading source spm\n");
@@ -335,6 +341,14 @@ int init_marian_rknn_model(
         printf("Failed to load target sentencepiece model: %s\n", tgt_status.ToString().c_str());
         return -1;
     }
+
+    printf("--> load lm weight\n");
+    app_ctx->lm_weight = (float*)(malloc(sizeof(float) * 59514 * 512));
+    read_fp32_from_file(lm_weight_path, 59514 * 512, app_ctx->lm_weight);
+
+    printf("--> load lm bias\n");
+    app_ctx->lm_bias = (float*)(malloc(sizeof(float) * 59514));
+    read_fp32_from_file(lm_bias_path, 59514, app_ctx->lm_bias);
 
     // TODO: Read these from config file
 
@@ -354,6 +368,10 @@ int release_marian_rknn_model(rknn_marian_rknn_context_t* app_ctx)
 {
     rknn_utils_release(&app_ctx->enc);
     rknn_utils_release(&app_ctx->dec);
+
+    free(app_ctx->lm_weight);
+    free(app_ctx->lm_bias);
+
     return 0;
 }
 
