@@ -16,10 +16,13 @@
 #include <algorithm>
 #include <cmath>
 
+// external
+#include <Eigen/Dense>
+#include <sentencepiece_processor.h>
+
 // thirdparty
 #include "easy_timer.h"
 #include "rknn_api.h"
-#include "sentencepiece_processor.h"
 
 #include "file_utils.h"
 #include "marian_rknn.h"

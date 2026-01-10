@@ -38,6 +38,14 @@ set(LIBRKNNRT_INCLUDES ${RKNN_PATH}/include)
 set(TIMER_PATH ${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty/timer)
 set(LIBTIMER_INCLUDES ${TIMER_PATH})
 
+# Eigen
+FetchContent_Declare(eigen
+  GIT_REPOSITORY https://gitlab.com/libeigen/eigen.git
+  GIT_TAG        3.4.0
+)
+
+FetchContent_MakeAvailable(eigen)
+
 # sentencepiece options: statically linked, no tcmalloc
 set(SPM_ENABLE_SHARED OFF CACHE BOOL INTERNAL)
 set(SPM_ENABLE_TCMALLOC OFF CACHE BOOL INTERNAL)
@@ -69,6 +77,7 @@ add_executable(${PROJECT_NAME}
 target_link_libraries(${PROJECT_NAME} PRIVATE
     ${LIBRKNNRT}
     dl
+    Eigen3::Eigen
     sentencepiece
 )
 
