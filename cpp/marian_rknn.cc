@@ -126,11 +126,18 @@ int rknn_nmt_process(
     }
     printf("\n");
 
+    printf("--> copy input ids to encoder\n");
+    memcpy(
+        app_ctx->enc.input_mem[ENC_IN_INPUT_IDS_IDX]->virt_addr,
+        input_token_sorted,
+        app_ctx->enc.in_attr[ENC_IN_INPUT_IDS_IDX].size
+    );
+
     printf("--> copy mask to encoder\n");
     memcpy(
         app_ctx->enc.input_mem[ENC_IN_ATTENTION_MASK_IDX]->virt_addr,
         enc_mask,
-        app_ctx->enc.out_attr[ENC_IN_ATTENTION_MASK_IDX].size
+        app_ctx->enc.in_attr[ENC_IN_ATTENTION_MASK_IDX].size
     );
 
     // Run encoder
@@ -167,7 +174,9 @@ int rknn_nmt_process(
     printf("--> setup decoder input state (first token = <BOS>)\n");
     int64_t decoder_input_ids[app_ctx->dec_len];
     memset(decoder_input_ids, 0, sizeof(int64_t) * app_ctx->dec_len);
-    decoder_input_ids[0] = app_ctx->bos_token_id;
+
+    // decoder start token ID
+    decoder_input_ids[0] = 59513;
 
     timer_total.tik();
     for (int num_iter = 0; num_iter < app_ctx->dec_len; num_iter++) {
@@ -175,7 +184,7 @@ int rknn_nmt_process(
         memcpy(
             app_ctx->dec.input_mem[DEC_IN_INPUT_IDS_IDX]->virt_addr,
             decoder_input_ids,
-            sizeof(int64_t) * app_ctx->dec_len
+            app_ctx->dec.in_attr[DEC_IN_INPUT_IDS_IDX].size
         );
 
         printf("--> generate decoder mask: ");
@@ -193,7 +202,7 @@ int rknn_nmt_process(
         memcpy(
             (float*)(app_ctx->dec.input_mem[DEC_IN_ATTENTION_MASK_IDX]->virt_addr),
             dec_mask,
-            app_ctx->dec.in_attr[DEC_IN_ATTENTION_MASK_IDX].n_elems
+            app_ctx->dec.in_attr[DEC_IN_ATTENTION_MASK_IDX].size
         );
 
         printf("--> rknn_run\n");
@@ -208,12 +217,13 @@ int rknn_nmt_process(
         printf("--> apply lm_head\n");
         std::vector<float> logits;
         logits.resize(app_ctx->lm_head.V * app_ctx->dec_len);
+        float* ptr = (float*)(app_ctx->dec.output_mem[DEC_OUT_DECODER_OUTPUT]->virt_addr);
         app_ctx->lm_head(
-            (float*)(app_ctx->dec.output_mem[DEC_OUT_DECODER_OUTPUT]->virt_addr),
+            &ptr[num_iter],
             logits.data()
         );
 
-        printf("--> argmax\n");
+        printf("--> argmax: ");
         int max = 0;
         float value = -INFINITY;
         for (int i = 1; i < app_ctx->lm_head.V; i++) {
@@ -223,7 +233,10 @@ int rknn_nmt_process(
             }
         }
 
-        output_token[num_iter + 1] = max;
+        printf("%d (%f)\n", max, value);
+
+        output_token[num_iter] = max;
+        decoder_input_ids[num_iter + 1] = max;
         if (max == app_ctx->eos_token_id) {
             break;
         }
@@ -380,7 +393,20 @@ int init_marian_rknn_model(
     app_ctx->lm_head.b = (float*)(malloc(sizeof(float) * V));
     read_fp32_from_file(lm_bias_path, V, app_ctx->lm_head.b);
 
+    printf("--> load vocab\n");
     read_map_from_file(vocab_path, app_ctx->vocab);
+
+    printf("--> invert vocab\n");
+    app_ctx->vocab_inv.reserve(app_ctx->vocab.size());
+    for (auto entry : app_ctx->vocab) {
+        auto existing = app_ctx->vocab_inv.find(entry.second);
+        if (existing != app_ctx->vocab_inv.end()) {
+            printf("Vocab is not unique. Duplicate found on ID: %d\n", entry.second);
+            return -1;
+        }
+
+        app_ctx->vocab_inv.emplace(entry.second, entry.first);
+    }
 
     // TODO: Read these from config file
 
@@ -427,6 +453,7 @@ int inference_marian_rknn_model(
     printf("\n");
 
     // apply vocab mapping
+    printf("--> apply vocab mapping\n");
     encoded_tokens.reserve(pieces.size());
     for (auto piece : pieces) {
         auto itr = app_ctx->vocab.find(piece);
@@ -472,13 +499,18 @@ int inference_marian_rknn_model(
     output_len = rknn_nmt_process(app_ctx, token_list, output_token);
 
     // prepare tokens for decode
-    std::vector<int> decode_tokens;
-
+    printf("--> reverse vocab mapping\n");
+    std::vector<std::string> decode_tokens;
     for (int i = 1; i < output_len; ++i) {
         if (output_token[i] == app_ctx->eos_token_id || output_token[i] == app_ctx->pad_token_id || output_token[i] <= 0) {
             break;
         }
-        decode_tokens.push_back(output_token[i]);
+        auto entry = app_ctx->vocab_inv.find(output_token[i]);
+        if (entry == app_ctx->vocab_inv.end()) {
+            printf("Warning: token not found: %d\n", output_token[i]);
+        } else {
+            decode_tokens.push_back(entry->second);
+        }
     }
 
     // decode tokens

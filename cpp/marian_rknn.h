@@ -45,6 +45,7 @@ struct rknn_marian_rknn_context_t
     sentencepiece::SentencePieceProcessor spm_tgt;
 
     std::unordered_map<std::string, int> vocab;
+    std::unordered_map<int, std::string> vocab_inv;
 
     int pad_token_id;
     int bos_token_id;
