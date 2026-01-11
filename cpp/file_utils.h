@@ -1,5 +1,8 @@
 #pragma once
 
+#include <string>
+#include <unordered_map>
+
 /**
  * @brief Read data from file
  *
@@ -18,3 +21,11 @@ int read_data_from_file(const char *path, char **out_data);
  * @return int -1: error; > 0: Read data size
  */
 int read_fp32_from_file(const char *path, int len, float *out_data);
+
+/**
+ * @brief Read a map of strings and integers from file
+ *
+ * @param path [in] File path
+ * @param out_data [out] Read data
+ */
+void read_map_from_file(const std::string& path, std::unordered_map<std::string, int>& out_data);

@@ -380,7 +380,7 @@ int init_marian_rknn_model(
     app_ctx->lm_head.b = (float*)(malloc(sizeof(float) * V));
     read_fp32_from_file(lm_bias_path, V, app_ctx->lm_head.b);
 
-    // TODO: Load vocab from JSON
+    read_map_from_file(vocab_path, app_ctx->vocab);
 
     // TODO: Read these from config file
 
@@ -420,14 +420,23 @@ int inference_marian_rknn_model(
     // encode tokens
     std::vector<int> encoded_tokens;
     auto pieces = app_ctx->spm_src.EncodeAsPieces(std::string(input_sentence));
-    printf("--> pieces:");
+    printf("--> sentence pieces:");
     for (auto piece : pieces) {
         printf(" %s", piece.c_str());
     }
     printf("\n");
 
-    // TODO: apply vocab
-    encoded_tokens.resize(pieces.size());
+    // apply vocab mapping
+    encoded_tokens.reserve(pieces.size());
+    for (auto piece : pieces) {
+        auto itr = app_ctx->vocab.find(piece);
+        if (itr == app_ctx->vocab.end()) {
+            // unknown token
+            encoded_tokens.push_back(0);
+        } else {
+            encoded_tokens.push_back(itr->second);
+        }
+    }
 
     // copy and truncate tokens
     token_list_len = encoded_tokens.size();
@@ -464,6 +473,7 @@ int inference_marian_rknn_model(
 
     // prepare tokens for decode
     std::vector<int> decode_tokens;
+
     for (int i = 1; i < output_len; ++i) {
         if (output_token[i] == app_ctx->eos_token_id || output_token[i] == app_ctx->pad_token_id || output_token[i] <= 0) {
             break;

@@ -15,8 +15,8 @@
 
 #pragma once
 
-#include <map>
 #include <string>
+#include <unordered_map>
 
 #include <rknn_api.h>
 #include <sentencepiece_processor.h>
@@ -44,7 +44,7 @@ struct rknn_marian_rknn_context_t
     sentencepiece::SentencePieceProcessor spm_src;
     sentencepiece::SentencePieceProcessor spm_tgt;
 
-    std::map<std::string, int> vocab;
+    std::unordered_map<std::string, int> vocab;
 
     int pad_token_id;
     int bos_token_id;
