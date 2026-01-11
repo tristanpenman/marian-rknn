@@ -1,6 +1,19 @@
-name: Pylint
+name: Run Pylint
 
-on: [push]
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - scripts/**
+      - requirements.txt
+      - .github/workflows/pylint.yml
+      - .pylintrc
+  pull_request:
+    paths:
+      - scripts/**
+      - requirements.txt
+      - .github/workflows/pylint.yml
+      - .pylintrc
 
 jobs:
   build:
