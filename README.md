@@ -41,7 +41,13 @@ The NPU also has a limited set of supported operators, meaning unsupported layer
 
 The script `preflight.py` can be used to check that your system can run a pretrained model from Hugging Face. You can choose a device (e.g. CUDA) using the `--device <type>` argument, and a specific model using `--model-name <id>`.
 
-For example, to download an English-to-French model and run on a CUDA device:
+For example, to download the [OPUS English-to-French model](https://huggingface.co/Helsinki-NLP/opus-mt-en-fr) and run it on a CUDA device:
+
+```bash
+python scripts/preflight.py --device cuda --model-name Helsinki-NLP/opus-mt-en-fr
+```
+
+Expected output:
 
 ```
 $ python scripts/preflight.py --device cuda --model-name Helsinki-NLP/opus-mt-en-fr
