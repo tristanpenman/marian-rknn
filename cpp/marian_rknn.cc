@@ -154,8 +154,6 @@ int rknn_nmt_process(
         output_token[i] = app_ctx->pad_token_id;
     }
 
-    output_token[0] = app_ctx->bos_token_id;
-
     printf("--> reset decoder input and output mem\n");
     for (int input_index = 0; input_index < app_ctx->dec.n_input; input_index++) {
         memset(app_ctx->dec.input_mem[input_index]->virt_addr, 0, app_ctx->dec.in_attr[input_index].size);
@@ -171,15 +169,15 @@ int rknn_nmt_process(
         app_ctx->enc.out_attr[ENC_OUT_ENCODER_HIDDEN_STATES].size
     );
 
-    printf("--> setup decoder input state (first token = <BOS>)\n");
+    printf("--> setup decoder input state\n");
     int64_t decoder_input_ids[app_ctx->dec_len];
     memset(decoder_input_ids, 0, sizeof(int64_t) * app_ctx->dec_len);
 
     // decoder start token ID
-    decoder_input_ids[0] = 59513;
+    decoder_input_ids[0] = app_ctx->decoder_start_token_id;
 
     timer_total.tik();
-    for (int num_iter = 0; num_iter < app_ctx->dec_len; num_iter++) {
+    for (int num_iter = 0; num_iter < app_ctx->dec_len - 1; num_iter++) {
         printf("--> decoder iteration %d\n", num_iter);
         memcpy(
             app_ctx->dec.input_mem[DEC_IN_INPUT_IDS_IDX]->virt_addr,
@@ -200,7 +198,7 @@ int rknn_nmt_process(
 
         printf("--> copy mask to decoder\n");
         memcpy(
-            (float*)(app_ctx->dec.input_mem[DEC_IN_ATTENTION_MASK_IDX]->virt_addr),
+            app_ctx->dec.input_mem[DEC_IN_ATTENTION_MASK_IDX]->virt_addr,
             dec_mask,
             app_ctx->dec.in_attr[DEC_IN_ATTENTION_MASK_IDX].size
         );
@@ -216,10 +214,10 @@ int rknn_nmt_process(
 
         printf("--> apply lm_head\n");
         std::vector<float> logits;
-        logits.resize(app_ctx->lm_head.V * app_ctx->dec_len);
+        logits.resize(app_ctx->lm_head.V);
         float* ptr = (float*)(app_ctx->dec.output_mem[DEC_OUT_DECODER_OUTPUT]->virt_addr);
         app_ctx->lm_head(
-            &ptr[num_iter],
+            &ptr[num_iter * app_ctx->lm_head.D],
             logits.data()
         );
 
@@ -236,7 +234,11 @@ int rknn_nmt_process(
         printf("%d (%f)\n", max, value);
 
         output_token[num_iter] = max;
-        decoder_input_ids[num_iter + 1] = max;
+
+        if (num_iter < app_ctx->dec_len - 1) {
+            decoder_input_ids[num_iter + 1] = max;
+        }
+
         if (max == app_ctx->eos_token_id) {
             break;
         }
@@ -247,7 +249,7 @@ int rknn_nmt_process(
     int output_len=0;
     printf("decoder output token: ");
     for (int i = 0; i < app_ctx->dec_len; i++) {
-        if (output_token[i] == 1) {
+        if (output_token[i] == app_ctx->eos_token_id || output_token[i] == app_ctx->pad_token_id) {
             break;
         }
         printf("%d ", output_token[i]);
@@ -410,6 +412,9 @@ int init_marian_rknn_model(
 
     // TODO: Read these from config file
 
+    app_ctx->decoder_start_token_id = 59513;
+    printf("--> decoder start token id: %d\n", app_ctx->decoder_start_token_id);
+
     app_ctx->pad_token_id = 59513;
     printf("--> pad token id: %d\n", app_ctx->pad_token_id);
 
@@ -493,10 +498,9 @@ int inference_marian_rknn_model(
     }
 
     // run model
-    int output_token[max_input_len];
-    memset(output_token, 0, sizeof(output_token));
+    std::vector<int> output_token(app_ctx->dec_len, 0);
     int output_len = 0;
-    output_len = rknn_nmt_process(app_ctx, token_list, output_token);
+    output_len = rknn_nmt_process(app_ctx, token_list, output_token.data());
 
     // prepare tokens for decode
     printf("--> reverse vocab mapping\n");
