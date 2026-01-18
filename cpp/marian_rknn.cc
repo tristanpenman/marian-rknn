@@ -307,7 +307,7 @@ int init_marian_rknn_model(
         return -1;
     }
 
-    ret = rknn_utils_init_output_buffer_all(&app_ctx->enc, ZERO_COPY_API, 0);
+    ret = rknn_utils_init_output_buffer_all(&app_ctx->enc, ZERO_COPY_API);
     if (ret != 0) {
         printf("rknn_utils_init_output_buffer_all ret=%d\n", ret);
         return -1;
@@ -320,7 +320,7 @@ int init_marian_rknn_model(
         return -1;
     }
 
-    ret = rknn_utils_init_output_buffer_all(&app_ctx->dec, ZERO_COPY_API, 0);
+    ret = rknn_utils_init_output_buffer_all(&app_ctx->dec, ZERO_COPY_API);
     if (ret != 0) {
         printf("rknn_utils_init_output_buffer_all ret=%d\n", ret);
         return -1;

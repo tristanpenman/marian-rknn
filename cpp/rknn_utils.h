@@ -37,7 +37,6 @@ struct RKNN_UTILS_INPUT_PARAM
 
 struct RKNN_UTILS_OUTPUT_PARAM
 {
-    uint8_t want_float;
     API_TYPE api_type;
     bool enable = false;
     bool _already_init = false;
@@ -81,12 +80,9 @@ int rknn_utils_init(MODEL_INFO* model_info);
 int rknn_utils_query_model_info(MODEL_INFO* model_info);
 
 int rknn_utils_init_input_buffer(MODEL_INFO* model_info, int node_index, API_TYPE api_type, uint8_t pass_through, rknn_tensor_type dtype, rknn_tensor_format layout_fmt);
-int rknn_utils_init_output_buffer(MODEL_INFO* model_info, int node_index, API_TYPE api_type, uint8_t want_float);
+int rknn_utils_init_output_buffer(MODEL_INFO* model_info, int node_index, API_TYPE api_type);
 
 int rknn_utils_init_input_buffer_all(MODEL_INFO* model_info, API_TYPE default_api_type, rknn_tensor_type default_t_type);
-int rknn_utils_init_output_buffer_all(MODEL_INFO* model_info, API_TYPE default_api_type, uint8_t default_want_float);
+int rknn_utils_init_output_buffer_all(MODEL_INFO* model_info, API_TYPE default_api_type);
 
 int rknn_utils_release(MODEL_INFO* model_info);
-
-int rknn_utils_query_dynamic_input(MODEL_INFO* model_info);
-int rknn_utils_reset_dynamic_input(MODEL_INFO* model_info, int dynamic_shape_group_index);

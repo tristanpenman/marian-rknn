@@ -16,10 +16,12 @@ static void dump_tensor_attr(rknn_tensor_attr *attr)
         sprintf(dims_str, "%s%d,", temp_str, attr->dims[i]);
     }
 
-    printf("  index=%d, name=%s, n_dims=%d, dims=[%s], n_elems=%d, size=%d, size_with_stride=%d, fmt=%s, type=%s, qnt_type=%s, "
+    printf("  index=%d, name=%s, n_dims=%d, dims=[%s], n_elems=%d, size=%d, "
+           "size_with_stride=%d, fmt=%s, type=%s, qnt_type=%s, "
            "zp=%d, scale=%f\n",
            attr->index, attr->name, attr->n_dims, dims_str,
-           attr->n_elems, attr->size, attr->size_with_stride, get_format_string(attr->fmt), get_type_string(attr->type),
+           attr->n_elems, attr->size, attr->size_with_stride,
+           get_format_string(attr->fmt), get_type_string(attr->type),
            get_qnt_type_string(attr->qnt_type), attr->zp, attr->scale);
 }
 
@@ -45,7 +47,8 @@ int rknn_utils_init(MODEL_INFO* model_info)
     }
 
     if (model_info->verbose_log) {
-        printf("RKNN Runtime Information: librknnrt version: %s (api version: %s)\n", version.drv_version, version.api_version);
+        printf("RKNN Runtime Information: librknnrt version: %s (api version: %s)\n",
+            version.drv_version, version.api_version);
     }
 
     ret = rknn_utils_query_model_info(model_info);
@@ -77,7 +80,9 @@ int rknn_utils_query_model_info(MODEL_INFO* model_info)
     model_info->in_attr = (rknn_tensor_attr*)malloc(sizeof(rknn_tensor_attr) * model_info->n_input);
     model_info->in_attr_native = (rknn_tensor_attr*)malloc(sizeof(rknn_tensor_attr) * model_info->n_input);
     model_info->input_mem = (rknn_tensor_mem**)malloc(sizeof(rknn_tensor_mem*) * model_info->n_input);
-    model_info->rkdmo_input_param = (RKNN_UTILS_INPUT_PARAM*)malloc(sizeof(RKNN_UTILS_INPUT_PARAM) * model_info->n_input);
+    model_info->rkdmo_input_param =
+        (RKNN_UTILS_INPUT_PARAM*)malloc(sizeof(RKNN_UTILS_INPUT_PARAM) * model_info->n_input);
+
     for (int i = 0; i < model_info->n_input; i++) {
         memset(&(model_info->inputs[i]), 0, sizeof(rknn_input));
         memset(&(model_info->rkdmo_input_param[i]), 0, sizeof(RKNN_UTILS_INPUT_PARAM));
@@ -87,7 +92,9 @@ int rknn_utils_query_model_info(MODEL_INFO* model_info)
     model_info->out_attr = (rknn_tensor_attr*)malloc(sizeof(rknn_tensor_attr) * model_info->n_output);
     model_info->out_attr_native = (rknn_tensor_attr*)malloc(sizeof(rknn_tensor_attr) * model_info->n_output);
     model_info->output_mem = (rknn_tensor_mem**)malloc(sizeof(rknn_tensor_mem*) * model_info->n_output);
-    model_info->rkdmo_output_param = (RKNN_UTILS_OUTPUT_PARAM*)malloc(sizeof(RKNN_UTILS_OUTPUT_PARAM) * model_info->n_output);
+    model_info->rkdmo_output_param =
+        (RKNN_UTILS_OUTPUT_PARAM*)malloc(sizeof(RKNN_UTILS_OUTPUT_PARAM) * model_info->n_output);
+
     for (int i = 0; i < model_info->n_output; i++) {
         memset(&(model_info->outputs[i]), 0, sizeof(rknn_output));
         memset(&(model_info->rkdmo_output_param[i]), 0, sizeof(RKNN_UTILS_OUTPUT_PARAM));
@@ -107,22 +114,6 @@ int rknn_utils_query_model_info(MODEL_INFO* model_info)
         if (model_info->verbose_log) {
             dump_tensor_attr(&model_info->in_attr[i]);
         }
-
-#ifdef RKDMO_NPU_2_NATIVE_ZP
-        model_info->in_attr_native[i].index = i;
-        ret = rknn_query(model_info->ctx, RKNN_QUERY_INPUT_ATTR, &(model_info->in_attr_native[i]), sizeof(rknn_tensor_attr));
-        if (ret != RKNN_SUCC) {
-            printf("rknn_query fail! ret=%d\n", ret);
-            return -1;
-        }
-        if (model_info->verbose_log) {
-            printf("native input attr: size_with_stride %d;\n", model_info->in_attr_native[i].size_with_stride);
-            printf("native input attr: w_stride %d;\n", model_info->in_attr_native[i].w_stride);
-            printf("native input attr: width %d;\n", model_info->in_attr_native[i].dims[2]);
-            dump_tensor_attr(&model_info->in_attr_native[i]);
-        }
-#endif
-
     }
 
     if (model_info->verbose_log) {
@@ -138,19 +129,6 @@ int rknn_utils_query_model_info(MODEL_INFO* model_info)
         if (model_info->verbose_log==true) {
             dump_tensor_attr(&model_info->out_attr[i]);
         }
-
-#ifdef RKDMO_NPU_2_NATIVE_ZP
-        model_info->out_attr_native[i].index = i;
-        // ret = rknn_query(model_info->ctx, RKNN_QUERY_NATIVE_NC1HWC2_OUTPUT_ATTR, &(model_info->out_attr_native[i]), sizeof(rknn_tensor_attr));
-        ret = rknn_query(model_info->ctx, RKNN_QUERY_NATIVE_NHWC_OUTPUT_ATTR, &(model_info->out_attr_native[i]), sizeof(rknn_tensor_attr));
-        if (ret != RKNN_SUCC) {
-            printf("rknn_query fail! ret=%d\n", ret);
-            return -1;
-        }
-        if (model_info->verbose_log==true) {
-            dump_tensor_attr(&model_info->out_attr_native[i]);
-        }
-#endif
     }
 
     if (model_info->init_flag > 0) {
@@ -240,7 +218,7 @@ int rknn_utils_init_input_buffer(
     return -1;
 }
 
-int rknn_utils_init_output_buffer(MODEL_INFO* model_info, int node_index, API_TYPE api_type, uint8_t want_float)
+int rknn_utils_init_output_buffer(MODEL_INFO* model_info, int node_index, API_TYPE api_type)
 {
     if (model_info->rkdmo_output_param[node_index]._already_init) {
         printf("ERROR model output buffer already init");
@@ -251,35 +229,16 @@ int rknn_utils_init_output_buffer(MODEL_INFO* model_info, int node_index, API_TY
 
     if (api_type == NORMAL_API) {
         model_info->outputs[node_index].index = node_index;
-        model_info->outputs[node_index].want_float = want_float;
         if (model_info->verbose_log==true) {
-            printf("rknn_utils_init_output_buffer: node_index=%d, want_float=%d\n", node_index, want_float);
+            printf("rknn_utils_init_output_buffer: node_index=%d\n", node_index);
         }
     } else if (api_type == ZERO_COPY_API) {
-        // assert(want_float==0); // toolkit1 not support, toolkit2 support zero_copy as float output
-
-#ifdef RKDMO_NPU_2_NATIVE_ZP
-        if (want_float) {
-            model_info->out_attr_native[node_index].type = RKNN_TENSOR_FLOAT32;
-        }
-        // model_info->out_attr_native[node_index].fmt = RKNN_TENSOR_NHWC;
-        // model_info->out_attr_native[node_index].fmt = RKNN_TENSOR_NC1HWC2;
-        int elem_size = rknn_utils_get_type_size(model_info->out_attr_native[node_index].type);
-        model_info->output_mem[node_index] = rknn_create_mem(model_info->ctx, model_info->out_attr_native[node_index].n_elems*elem_size);
-        if (model_info->verbose_log==true) {
-            printf("size with stride %d\n", model_info->out_attr_native[node_index].size_with_stride);
-            printf("size %d\n", model_info->out_attr_native[node_index].size);
-        }
-#else
-        if (want_float) {
-            model_info->out_attr[node_index].type = RKNN_TENSOR_FLOAT32;
-        }
         int elem_size = rknn_utils_get_type_size(model_info->out_attr[node_index].type);
         model_info->output_mem[node_index] = rknn_create_mem(model_info->ctx, model_info->out_attr[node_index].n_elems*elem_size);
         if (model_info->verbose_log==true) {
-            printf("rknn_utils_init_output_buffer(zero copy): node_index=%d, size with stride %d\n", node_index, model_info->out_attr[node_index].size);
+            printf("rknn_utils_init_output_buffer(zero copy): node_index=%d, size with stride %d\n",
+                node_index, model_info->out_attr[node_index].size);
         }
-#endif
     }
     return 0;
 }
@@ -316,7 +275,7 @@ int rknn_utils_init_input_buffer_all(MODEL_INFO* model_info, API_TYPE default_ap
     return 0;
 }
 
-int rknn_utils_init_output_buffer_all(MODEL_INFO* model_info, API_TYPE default_api_type, uint8_t default_want_float)
+int rknn_utils_init_output_buffer_all(MODEL_INFO* model_info, API_TYPE default_api_type)
 {
     for (int i = 0; i < model_info->n_output; i++) {
         if (model_info->rkdmo_output_param[i]._already_init) {
@@ -326,9 +285,9 @@ int rknn_utils_init_output_buffer_all(MODEL_INFO* model_info, API_TYPE default_a
 
         int ret;
         if (model_info->rkdmo_output_param[i].enable) {
-            ret = rknn_utils_init_output_buffer(model_info, i, model_info->rkdmo_output_param[i].api_type, model_info->rkdmo_output_param[i].want_float);
+            ret = rknn_utils_init_output_buffer(model_info, i, model_info->rkdmo_output_param[i].api_type);
         } else {
-            ret = rknn_utils_init_output_buffer(model_info, i, default_api_type, default_want_float);
+            ret = rknn_utils_init_output_buffer(model_info, i, default_api_type);
         }
         if (ret != 0) {
             return ret;
@@ -378,98 +337,6 @@ static void dump_input_dynamic_range(rknn_input_range *dyn_range)
 
     printf("  index=%d, name=%s, shape_number=%d, range=[%s], fmt = %s\n", dyn_range->index, dyn_range->name,
            dyn_range->shape_number, range_str.c_str(), get_format_string(dyn_range->fmt));
-}
-
-// TODO: Can this be used to make dynamic inputs work?
-int rknn_utils_query_dynamic_input(MODEL_INFO* model_info)
-{
-    if (model_info->verbose_log==true) {
-        printf("dynamic inputs shape range:\n");
-    }
-    model_info->dyn_range = (rknn_input_range*)malloc(model_info->n_input * sizeof(rknn_input_range));
-    memset(model_info->dyn_range, 0, model_info->n_input * sizeof(rknn_input_range));
-
-    int ret = 0;
-    for (uint32_t i = 0; i < model_info->n_input; i++) {
-        model_info->dyn_range[i].index = i;
-        ret = rknn_query(model_info->ctx, RKNN_QUERY_INPUT_DYNAMIC_RANGE, &model_info->dyn_range[i], sizeof(rknn_input_range));
-        if (ret != RKNN_SUCC) {
-            printf("model may has no dynamic shape info\n");
-            model_info->is_dyn_shape = false;
-            return -1;
-        }
-
-        if (model_info->verbose_log==true) {
-            dump_input_dynamic_range(&model_info->dyn_range[i]);
-        }
-    }
-
-    for (int i=0; i < model_info->n_input; i++) {
-        if (model_info->diff_input_idx > 0) {
-            break;
-        }
-
-        for (int d=0; d < model_info->dyn_range[i].n_dims; d++) {
-            if (model_info->diff_input_idx > 0) {
-                break;
-            }
-            int compare_dim = -1;
-
-            for (int j=0; j < model_info->dyn_range[i].shape_number; j++) {
-                if (model_info->diff_input_idx > 0) {
-                    break;
-                }
-
-                if (compare_dim == -1) {
-                    compare_dim = model_info->dyn_range[i].dyn_range[j][d];
-                } else if (compare_dim != model_info->dyn_range[i].dyn_range[j][d]) {
-                    model_info->diff_input_idx = i;
-                }
-            }
-        }
-    }
-
-    model_info->is_dyn_shape = true;
-    return 0;
-}
-
-int rknn_utils_reset_dynamic_input(MODEL_INFO* model_info, int dynamic_shape_group_index)
-{
-    int ret = 0;
-    if (model_info->dyn_range[0].shape_number == 0) {
-        printf("model has no dynamic shape info, please call 'rknn_utils_query_dynamic_input' first\n");
-        return -1;
-    }
-
-    if (dynamic_shape_group_index >= model_info->dyn_range[0].shape_number) {
-        printf("dynamic_shape_group_index - [%d] exceed [%d]\n", dynamic_shape_group_index, model_info->dyn_range[0].shape_number);
-    }
-
-    rknn_tensor_attr tmp_attr;
-    tmp_attr.index = model_info->diff_input_idx;
-    ret = rknn_query(model_info->ctx, RKNN_QUERY_INPUT_ATTR, &tmp_attr, sizeof(rknn_tensor_attr));
-    for (int d=0; d < tmp_attr.n_dims; d++) {
-        tmp_attr.dims[d] = model_info->dyn_range[model_info->diff_input_idx].dyn_range[dynamic_shape_group_index][d];
-    }
-
-    rknn_set_input_shape(model_info->ctx, &tmp_attr);
-
-    for (int i = 0; i < model_info->n_input; i++) {
-        ret = rknn_query(model_info->ctx, RKNN_QUERY_CURRENT_INPUT_ATTR, &model_info->in_attr[i], sizeof(rknn_tensor_attr));
-        if (ret != RKNN_SUCC) {
-            printf("rknn_query (RKNN_QUERY_CURRENT_INPUT_ATTR) failed ret: %d\n", ret);
-            return ret;
-        }
-    }
-    for (int i = 0; i < model_info->n_output; i++) {
-        ret = rknn_query(model_info->ctx, RKNN_QUERY_CURRENT_OUTPUT_ATTR, &model_info->out_attr[i], sizeof(rknn_tensor_attr));
-        if (ret != RKNN_SUCC) {
-            printf("rknn_query (RKNN_QUERY_CURRENT_OUTPUT_ATTR) failed ret: %d\n", ret);
-            return ret;
-        }
-    }
-
-    return 0;
 }
 
 int rknn_utils_release(MODEL_INFO* model_info)
