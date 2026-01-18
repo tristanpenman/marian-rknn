@@ -154,6 +154,8 @@ int rknn_utils_get_type_size(rknn_tensor_type type)
         return 1;
     case RKNN_TENSOR_INT8:
         return 1;
+    case RKNN_TENSOR_INT32:
+        return 4;
     default:
         printf("ERROR: not support tensor type %s", get_type_string(type));
         return -1;
@@ -243,7 +245,7 @@ int rknn_utils_init_output_buffer(MODEL_INFO* model_info, int node_index, API_TY
     return 0;
 }
 
-int rknn_utils_init_input_buffer_all(MODEL_INFO* model_info, API_TYPE default_api_type, rknn_tensor_type default_t_type)
+int rknn_utils_init_input_buffer_all(MODEL_INFO* model_info, API_TYPE default_api_type)
 {
     rknn_tensor_format default_layout_fmt = RKNN_TENSOR_NHWC;
     uint8_t default_pass_through = 0;
@@ -260,13 +262,15 @@ int rknn_utils_init_input_buffer_all(MODEL_INFO* model_info, API_TYPE default_ap
                                      model_info->rkdmo_input_param[i].api_type,
                                      model_info->rkdmo_input_param[i].pass_through,
                                      model_info->rkdmo_input_param[i].dtype,
-                                     model_info->rkdmo_input_param[i].layout_fmt);
+                                     model_info->rkdmo_input_param[i].dtype == RKNN_TENSOR_INT32 ?
+                                        model_info->rkdmo_input_param[i].layout_fmt :
+                                        RKNN_TENSOR_UNDEFINED);
         } else {
             if (model_info->in_attr[i].n_dims==4) {
                 default_layout_fmt = model_info->in_attr[i].fmt;
             }
 
-            ret = rknn_utils_init_input_buffer(model_info, i, default_api_type, default_pass_through, default_t_type, default_layout_fmt);
+            ret = rknn_utils_init_input_buffer(model_info, i, default_api_type, default_pass_through, model_info->in_attr[i].type, default_layout_fmt);
         }
         if (ret != 0) {
             return ret;

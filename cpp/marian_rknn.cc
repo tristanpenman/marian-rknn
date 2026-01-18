@@ -76,12 +76,12 @@ int rknn_nmt_process(
     TIMER timer_total;
 
     // encoder attention mask
-    int64_t enc_mask[app_ctx->enc_len];
-    memset(enc_mask, 0x00, sizeof(int64_t) * app_ctx->enc_len);
+    int32_t enc_mask[app_ctx->enc_len];
+    memset(enc_mask, 0x00, sizeof(int32_t) * app_ctx->enc_len);
 
     // decoder attention mask
-    int64_t dec_mask[app_ctx->dec_len];
-    memset(dec_mask, 0x00, sizeof(int64_t) * app_ctx->dec_len);
+    int32_t dec_mask[app_ctx->dec_len];
+    memset(dec_mask, 0x00, sizeof(int32_t) * app_ctx->dec_len);
 
     // count tokens
     int input_token_give = 0;
@@ -170,8 +170,8 @@ int rknn_nmt_process(
     );
 
     printf("--> setup decoder input state\n");
-    int64_t decoder_input_ids[app_ctx->dec_len];
-    memset(decoder_input_ids, 0, sizeof(int64_t) * app_ctx->dec_len);
+    int32_t decoder_input_ids[app_ctx->dec_len];
+    memset(decoder_input_ids, 0, sizeof(int32_t) * app_ctx->dec_len);
 
     // decoder start token ID
     decoder_input_ids[0] = app_ctx->decoder_start_token_id;
@@ -301,7 +301,7 @@ int init_marian_rknn_model(
     printf("--> dec len: %d\n", app_ctx->dec_len);
 
     printf("--> init encoder buffers\n");
-    ret = rknn_utils_init_input_buffer_all(&app_ctx->enc, ZERO_COPY_API, RKNN_TENSOR_FLOAT16);
+    ret = rknn_utils_init_input_buffer_all(&app_ctx->enc, ZERO_COPY_API);
     if (ret != 0) {
         printf("rknn_utils_init_input_buffer_all ret=%d\n", ret);
         return -1;
@@ -314,7 +314,7 @@ int init_marian_rknn_model(
     }
 
     printf("--> init decoder buffers\n");
-    ret = rknn_utils_init_input_buffer_all(&app_ctx->dec, ZERO_COPY_API, RKNN_TENSOR_FLOAT16);
+    ret = rknn_utils_init_input_buffer_all(&app_ctx->dec, ZERO_COPY_API);
     if (ret != 0) {
         printf("rknn_utils_init_input_buffer_all ret=%d\n", ret);
         return -1;

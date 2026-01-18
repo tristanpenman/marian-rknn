@@ -82,7 +82,7 @@ int rknn_utils_query_model_info(MODEL_INFO* model_info);
 int rknn_utils_init_input_buffer(MODEL_INFO* model_info, int node_index, API_TYPE api_type, uint8_t pass_through, rknn_tensor_type dtype, rknn_tensor_format layout_fmt);
 int rknn_utils_init_output_buffer(MODEL_INFO* model_info, int node_index, API_TYPE api_type);
 
-int rknn_utils_init_input_buffer_all(MODEL_INFO* model_info, API_TYPE default_api_type, rknn_tensor_type default_t_type);
+int rknn_utils_init_input_buffer_all(MODEL_INFO* model_info, API_TYPE default_api_type);
 int rknn_utils_init_output_buffer_all(MODEL_INFO* model_info, API_TYPE default_api_type);
 
 int rknn_utils_release(MODEL_INFO* model_info);
