@@ -231,13 +231,13 @@ int rknn_utils_init_output_buffer(MODEL_INFO* model_info, int node_index, API_TY
 
     if (api_type == NORMAL_API) {
         model_info->outputs[node_index].index = node_index;
-        if (model_info->verbose_log==true) {
+        if (model_info->verbose_log) {
             printf("rknn_utils_init_output_buffer: node_index=%d\n", node_index);
         }
     } else if (api_type == ZERO_COPY_API) {
         int elem_size = rknn_utils_get_type_size(model_info->out_attr[node_index].type);
-        model_info->output_mem[node_index] = rknn_create_mem(model_info->ctx, model_info->out_attr[node_index].n_elems*elem_size);
-        if (model_info->verbose_log==true) {
+        model_info->output_mem[node_index] = rknn_create_mem(model_info->ctx, model_info->out_attr[node_index].n_elems * elem_size);
+        if (model_info->verbose_log) {
             printf("rknn_utils_init_output_buffer(zero copy): node_index=%d, size with stride %d\n",
                 node_index, model_info->out_attr[node_index].size);
         }
@@ -262,9 +262,7 @@ int rknn_utils_init_input_buffer_all(MODEL_INFO* model_info, API_TYPE default_ap
                                      model_info->rkdmo_input_param[i].api_type,
                                      model_info->rkdmo_input_param[i].pass_through,
                                      model_info->rkdmo_input_param[i].dtype,
-                                     model_info->rkdmo_input_param[i].dtype == RKNN_TENSOR_INT32 ?
-                                        model_info->rkdmo_input_param[i].layout_fmt :
-                                        RKNN_TENSOR_UNDEFINED);
+                                     model_info->rkdmo_input_param[i].layout_fmt);
         } else {
             if (model_info->in_attr[i].n_dims==4) {
                 default_layout_fmt = model_info->in_attr[i].fmt;

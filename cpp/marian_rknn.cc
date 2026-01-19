@@ -29,6 +29,7 @@
 #include "file_utils.h"
 #include "marian_rknn.h"
 #include "rknn_utils.h"
+#include "type_half.h"
 
 #define EMBEDDING_DIM 512
 #define DECODER_LAYER_NUM 6
@@ -54,7 +55,7 @@
 
 void rknn_marian_lm_head_t::operator()(const float* hidden, float* out_logits) const
 {
-    using RowMat = Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>;
+    using RowMat = Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::ColMajor>;
 
     Eigen::Map<const Eigen::Matrix<float, 1, Eigen::Dynamic, Eigen::RowMajor>> h(hidden, D);
     Eigen::Map<const RowMat> W(Wt, D, V);
@@ -67,8 +68,8 @@ void rknn_marian_lm_head_t::operator()(const float* hidden, float* out_logits) c
 
 int rknn_nmt_process(
     rknn_marian_rknn_context_t* app_ctx,
-    int* input_token,
-    int* output_token)
+    int32_t* input_token,
+    int32_t* output_token)
 {
     int ret = 0;
 
@@ -94,14 +95,14 @@ int rknn_nmt_process(
 
     // replace trailing tokens with eos, then pad tokens
     printf("--> tokens given (%d): ", input_token_give);
-    int input_token_sorted[app_ctx->enc_len];
+    int32_t input_token_sorted[app_ctx->enc_len];
     for (int i = 0; i < app_ctx->enc_len; i++) {
         if (i < input_token_give) {
             // copy original token
             input_token_sorted[i] = input_token[i];
         } else if (i == input_token_give) {
             // terminate with <eos>
-            input_token_sorted[i] = app_ctx->eos_token_id;;
+            input_token_sorted[i] = app_ctx->eos_token_id;
         } else {
             // all other characters are <pad> tokens
             input_token_sorted[i] = app_ctx->pad_token_id;
@@ -175,6 +176,9 @@ int rknn_nmt_process(
 
     // decoder start token ID
     decoder_input_ids[0] = app_ctx->decoder_start_token_id;
+    for (int i = 1; i < app_ctx->dec_len; i++) {
+        decoder_input_ids[i] = app_ctx->pad_token_id;
+    }
 
     timer_total.tik();
     for (int num_iter = 0; num_iter < app_ctx->dec_len - 1; num_iter++) {
@@ -212,19 +216,27 @@ int rknn_nmt_process(
             return -1;
         }
 
+        // convert fp16 to fp32
+        half* ptr = (half*)(app_ctx->dec.output_mem[DEC_OUT_DECODER_OUTPUT]->virt_addr);
+        std::vector<float> output_floats(app_ctx->lm_head.D, 0);
+        for (int j = 0; j < app_ctx->lm_head.D; j++) {
+            output_floats[j] = half_to_float(ptr[app_ctx->lm_head.D * num_iter + j]);
+            printf("%f ", output_floats[j]);
+        }
+        printf("\n");
+
         printf("--> apply lm_head\n");
         std::vector<float> logits;
         logits.resize(app_ctx->lm_head.V);
-        float* ptr = (float*)(app_ctx->dec.output_mem[DEC_OUT_DECODER_OUTPUT]->virt_addr);
         app_ctx->lm_head(
-            &ptr[num_iter * app_ctx->lm_head.D],
+            output_floats.data(),
             logits.data()
         );
 
         printf("--> argmax: ");
         int max = 0;
         float value = -INFINITY;
-        for (int i = 1; i < app_ctx->lm_head.V; i++) {
+        for (int i = 0; i < app_ctx->lm_head.V; i++) {
             if (logits[i] > value) {
                 value = logits[i];
                 max = i;
@@ -253,7 +265,7 @@ int rknn_nmt_process(
             break;
         }
         printf("%d ", output_token[i]);
-        output_len ++;
+        output_len++;
     }
     printf("\n");
 
@@ -498,14 +510,14 @@ int inference_marian_rknn_model(
     }
 
     // run model
-    std::vector<int> output_token(app_ctx->dec_len, 0);
+    std::vector<int32_t> output_token(app_ctx->dec_len, 0);
     int output_len = 0;
     output_len = rknn_nmt_process(app_ctx, token_list, output_token.data());
 
     // prepare tokens for decode
     printf("--> reverse vocab mapping\n");
     std::vector<std::string> decode_tokens;
-    for (int i = 1; i < output_len; ++i) {
+    for (int i = 0; i < output_len; ++i) {
         if (output_token[i] == app_ctx->eos_token_id || output_token[i] == app_ctx->pad_token_id || output_token[i] <= 0) {
             break;
         }
