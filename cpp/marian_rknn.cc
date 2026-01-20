@@ -191,7 +191,7 @@ int rknn_nmt_process(
 
         printf("--> generate decoder mask: ");
         for (int j = 0; j < app_ctx->dec_len; j++) {
-            if (j > num_iter) {
+            if (j > num_iter || decoder_input_ids[j] == app_ctx->pad_token_id) {
                 dec_mask[j] = 0;
             } else {
                 dec_mask[j] = 1;
