@@ -183,7 +183,7 @@ int rknn_utils_init_input_buffer(
         model_info->inputs[node_index].pass_through = pass_through;
         model_info->inputs[node_index].type = dtype;
         model_info->inputs[node_index].fmt = layout_fmt;
-        model_info->inputs[node_index].size = model_info->in_attr[node_index].n_elems* elem_size;
+        model_info->inputs[node_index].size = model_info->in_attr[node_index].n_elems * elem_size;
 
         if (model_info->verbose_log) {
             printf("rknn_utils_init_input_buffer: node_index=%d, size=%d, n_elems=%d, fmt=%s, type=%s\n",

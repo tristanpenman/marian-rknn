@@ -90,7 +90,7 @@ int rknn_nmt_process(
     }
 
     // replace trailing tokens with eos, then pad tokens
-    printf("--> tokens given (%d): ", input_token_give);
+    printf("--> tokens given: %d\n", input_token_give);
     int32_t input_token_sorted[app_ctx->enc_len];
     for (int i = 0; i < app_ctx->enc_len; i++) {
         if (i < input_token_give) {
@@ -103,9 +103,7 @@ int rknn_nmt_process(
             // all other characters are <pad> tokens
             input_token_sorted[i] = app_ctx->pad_token_id;
         }
-        printf(" %d", input_token_sorted[i]);
     }
-    printf("\n");
 
     // attention mask includes 1s for kept tokens, 0s for masked tokens
     printf("--> generate attention mask: ");
@@ -145,19 +143,7 @@ int rknn_nmt_process(
         return -1;
     }
     timer.tok();
-    timer.print_time("rknn encoder run");
-
-    for (int i = 0; i < app_ctx->dec_len; i++) {
-        output_token[i] = app_ctx->pad_token_id;
-    }
-
-    printf("--> reset decoder input and output mem\n");
-    for (int input_index = 0; input_index < app_ctx->dec.n_input; input_index++) {
-        memset(app_ctx->dec.input_mem[input_index]->virt_addr, 0, app_ctx->dec.in_attr[input_index].size);
-    }
-    for (int output_index = 0; output_index < app_ctx->dec.n_output; output_index++) {
-        memset(app_ctx->dec.output_mem[output_index]->virt_addr, 0, app_ctx->dec.out_attr[output_index].size);
-    }
+    timer.print_time("--> rknn encoder run");
 
     printf("--> copy output from encoder to decoder\n");
     memcpy(
@@ -183,6 +169,11 @@ int rknn_nmt_process(
         decoder_input_ids[i] = app_ctx->pad_token_id;
     }
 
+    // output starts with pad token
+    for (int i = 0; i < app_ctx->dec_len; i++) {
+        output_token[i] = app_ctx->pad_token_id;
+    }
+
     timer_total.tik();
     for (int num_iter = 0; num_iter < app_ctx->dec_len - 1; num_iter++) {
         printf("--> decoder iteration %d\n", num_iter);
@@ -201,14 +192,12 @@ int rknn_nmt_process(
             return -1;
         }
 
-        // convert fp16 to fp32
+        printf("--> convert fp16 to fp32\n");
         half* ptr = (half*)(app_ctx->dec.output_mem[DEC_OUT_DECODER_OUTPUT]->virt_addr);
         std::vector<float> output_floats(app_ctx->lm_head.D, 0);
         for (int j = 0; j < app_ctx->lm_head.D; j++) {
             output_floats[j] = half_to_float(ptr[app_ctx->lm_head.D * num_iter + j]);
-            printf("%f ", output_floats[j]);
         }
-        printf("\n");
 
         printf("--> apply lm_head\n");
         std::vector<float> logits;
@@ -244,7 +233,7 @@ int rknn_nmt_process(
 
     // for debug
     int output_len=0;
-    printf("decoder output token: ");
+    printf("--> decoder output tokens: ");
     for (int i = 0; i < app_ctx->dec_len; i++) {
         if (output_token[i] == app_ctx->eos_token_id || output_token[i] == app_ctx->pad_token_id) {
             break;
@@ -254,9 +243,10 @@ int rknn_nmt_process(
     }
     printf("\n");
 
-    timer.print_time("rknn decoder once run");
-    printf("decoder run %d times. ", output_len-1);
-    timer_total.print_time("cost");
+    timer.print_time("--> rknn decoder once run");
+
+    printf("--> decoder run %d times\n", output_len - 1);
+    timer_total.print_time("--> total time");
 
     return output_len;
 }

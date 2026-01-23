@@ -111,9 +111,9 @@ int main(int argc, char **argv)
             break;
         }
         timer.tok();
-        timer.print_time("inference time");
+        timer.print_time("--> inference time");
 
-        printf("output_strings: %s\n", output_strings);
+        printf("--> output: %s\n", output_strings);
 
         if (is_receipt == true) {
             break;
