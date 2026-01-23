@@ -76,13 +76,9 @@ int rknn_nmt_process(
     TIMER timer;
     TIMER timer_total;
 
-    // encoder attention mask
-    int32_t enc_mask[app_ctx->enc_len];
-    memset(enc_mask, 0x00, sizeof(int32_t) * app_ctx->enc_len);
-
-    // decoder attention mask
-    int32_t dec_mask[app_ctx->dec_len];
-    memset(dec_mask, 0x00, sizeof(int32_t) * app_ctx->dec_len);
+    // attention mask
+    int32_t attention_mask[app_ctx->enc_len];
+    memset(attention_mask, 0x00, sizeof(int32_t) * app_ctx->enc_len);
 
     // count tokens
     int input_token_give = 0;
@@ -112,18 +108,18 @@ int rknn_nmt_process(
     printf("\n");
 
     // attention mask includes 1s for kept tokens, 0s for masked tokens
-    printf("--> generate encoder mask: ");
+    printf("--> generate attention mask: ");
     bool padding = false;
     for (int i = 0; i < app_ctx->enc_len; i++) {
         if (padding) {
-            enc_mask[i] = 0;
+            attention_mask[i] = 0;
         } else {
-            enc_mask[i] = 1;
+            attention_mask[i] = 1;
             if (input_token_sorted[i] == app_ctx->eos_token_id) {
                 padding = true;
             }
         }
-        printf(" %d", enc_mask[i]);
+        printf(" %d", attention_mask[i]);
     }
     printf("\n");
 
@@ -137,7 +133,7 @@ int rknn_nmt_process(
     printf("--> copy mask to encoder\n");
     memcpy(
         app_ctx->enc.input_mem[ENC_IN_ATTENTION_MASK_IDX]->virt_addr,
-        enc_mask,
+        attention_mask,
         app_ctx->enc.in_attr[ENC_IN_ATTENTION_MASK_IDX].size
     );
 
@@ -170,6 +166,13 @@ int rknn_nmt_process(
         app_ctx->enc.out_attr[ENC_OUT_ENCODER_HIDDEN_STATES].size
     );
 
+    printf("--> copy attention mask to decoder\n");
+    memcpy(
+        app_ctx->dec.input_mem[DEC_IN_ATTENTION_MASK_IDX]->virt_addr,
+        attention_mask,
+        app_ctx->dec.in_attr[DEC_IN_ATTENTION_MASK_IDX].size
+    );
+
     printf("--> setup decoder input state\n");
     int32_t decoder_input_ids[app_ctx->dec_len];
     memset(decoder_input_ids, 0, sizeof(int32_t) * app_ctx->dec_len);
@@ -187,24 +190,6 @@ int rknn_nmt_process(
             app_ctx->dec.input_mem[DEC_IN_INPUT_IDS_IDX]->virt_addr,
             decoder_input_ids,
             app_ctx->dec.in_attr[DEC_IN_INPUT_IDS_IDX].size
-        );
-
-        printf("--> generate decoder mask: ");
-        for (int j = 0; j < app_ctx->dec_len; j++) {
-            if (j > num_iter || decoder_input_ids[j] == app_ctx->pad_token_id) {
-                dec_mask[j] = 0;
-            } else {
-                dec_mask[j] = 1;
-            }
-            printf(" %d", dec_mask[j]);
-        }
-        printf("\n");
-
-        printf("--> copy mask to decoder\n");
-        memcpy(
-            app_ctx->dec.input_mem[DEC_IN_ATTENTION_MASK_IDX]->virt_addr,
-            dec_mask,
-            app_ctx->dec.in_attr[DEC_IN_ATTENTION_MASK_IDX].size
         );
 
         printf("--> rknn_run\n");
@@ -309,7 +294,7 @@ int init_marian_rknn_model(
     app_ctx->enc_len = app_ctx->enc.in_attr[ENC_IN_INPUT_IDS_IDX].dims[1];
     printf("--> enc len: %d\n", app_ctx->enc_len);
 
-    app_ctx->dec_len = app_ctx->dec.in_attr[DEC_IN_ATTENTION_MASK_IDX].dims[1];
+    app_ctx->dec_len = app_ctx->dec.in_attr[DEC_IN_INPUT_IDS_IDX].dims[1];
     printf("--> dec len: %d\n", app_ctx->dec_len);
 
     printf("--> init encoder buffers\n");
