@@ -1,14 +1,9 @@
 #!/usr/bin/env python3
 
-import argparse
 import json
 import os
-import sys
-import torch
 import numpy as np
 import sentencepiece as spm
-
-from rknn.api import RKNN
 
 def load_config(config_path):
     if not os.path.exists(config_path):
