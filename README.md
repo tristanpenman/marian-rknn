@@ -1,13 +1,15 @@
 # Marian RKNN
 
-Python scripts and other resources to run MarianMT models on Rockchip NPU devices.
+This repo contains an implementation of MarianMT that runs on Rockchip NPU (RKNN) devices. It also includes Python scripts and step-by-step instructions to assist with the model conversion process.
 
 ### Contents
 
 * [Background](#background)
+  * [MarianNMT](#mariannmt)
   * [MarianMT](#marianmt)
   * [Key Challenges](#key-challenges)
-* [Preflight](#preflight)
+* [Hugging Face](#hugging-face)
+  * [Preflight](#preflight)
   * [Prerequisites](#prerequisites)
   * [Docker (CPU-only preflight)](#docker-cpu-only-preflight)
   * [Docker Compose](#docker-compose)
@@ -20,16 +22,23 @@ Python scripts and other resources to run MarianMT models on Rockchip NPU device
 * [Native Implementation](#native-implementation)
   * [Cross-Compilation](#cross-compilation)
   * [Release Builds](#release-builds)
+* [License](#license)
 
 ## Background
 
 Neural machine translation (NMT) systems translate text by learning sequence-to-sequence mappings between languages. Earlier models relied on recurrent neural networks, or even statistical machine translation (SMT). Modern architectures typically use transformers with attention mechanisms. Deploying these models on Edge AI devices such as Rockchip NPUs requires careful conversion to the neural network primitives supported by the device.
 
+### MarianNMT
+
+MarianNMT is a machine translation framework developed by the [University of Helsinki Language Technology Group](https://blogs.helsinki.fi/language-technology/). MarianNMT focuses on efficiency, with an implementation written in pure C++, with very few dependencies. The framework includes a custom auto-differentiation engine and efficient algorithms to train encoder-decoder models.
+
+GPU support can be enabled if CUDA and cuDNN are available. However, this does not port easily to embedded NPUs, such as the Rockchip NPU.
+
 ### MarianMT
 
-MarianMT is a machine translation framework developed by the [University of Helsinki Language Technology Group](https://blogs.helsinki.fi/language-technology/), more commonly known as [Helsinki-NLP](https://huggingface.co/Helsinki-NLP). MarianMT provides Transformer-based models that have been trained on a large number of datasets and language pairs. Pre-trained models are available on [Hugging Face](https://huggingface.co/Helsinki-NLP/models), with both encoder-decoder checkpoints and tokenization assets.
+MarianMT is a PyTorch implementation and collection of pretrained models that have been trained on a large number of datasets and language pairs. Pretrained models are available on [Hugging Face](https://huggingface.co/Helsinki-NLP/models). This includes encoder-decoder checkpoints and tokenizers.
 
-MarianMT focuses on efficiency, with an implementation written in pure C++, with very few dependencies. The framework includes a custom auto-differentiation engine and efficient algorithms to train encoder-decoder models.
+Being a PyTorch implementation is valuable, because we can convert that to ONNX, then to RKNN format.
 
 ### Key Challenges
 
@@ -37,7 +46,11 @@ Adapting MarianMT models for Rockchip NPUs involves several challenges. Rockchip
 
 The NPU also has a limited set of supported operators, meaning unsupported layers need to be reimplemented or approximated with the primitives that are available. Finally, RKNN memory and quantization constraints require calibration and profiling to preserve accuracy once deployed on the target device.
 
-## Preflight
+## Hugging Face
+
+Hugging Face hosts the official MarianMT checkpoints, tokenizers, and configuration files that seed our RKNN conversion workflow. We can use the `transformers` library to simplify downloading these artifacts, ensuring that the encoder, decoder, and vocabulary files remain synchronized across languages.
+
+### Preflight
 
 The script `preflight.py` can be used to check that your system can run a pretrained model from Hugging Face. You can choose a device (e.g. CUDA) using the `--device <type>` argument, and a specific model using `--model-name <id>`.
 
@@ -184,11 +197,11 @@ total 227860
 -rw-r--r-- 1 root root   1339166 Oct 16 12:10 vocab.json
 ```
 
-The files we care about are `decoder.onnx` and `encoder.onnx`.
+In the next step, we will convert `decoder.onnx`, `encoder.onnx`, `lm_bias.bin` and `lm_weight.bin` into formats that can be used by our C++ RKNN implementation.
 
 ### Verify ONNX
 
-Before proceeding any further, it's a good idea to verify that the ONNX models work correctly:
+Before proceeding any further, it's also a good idea to verify that the ONNX models work correctly:
 
 ```bash
 python Marian-ONNX-Converter/test.py \
@@ -205,7 +218,7 @@ Je suis un poisson
 
 ### ONNX to RKNN
 
-The next step is to convert from ONNX to RKNN. We can use [convert.py](scripts/convert.py).
+Now we can convert the encoder and decoder from ONNX to RKNN. We can use [convert.py](scripts/convert.py).
 
 Start by converting the encoder:
 
@@ -309,3 +322,5 @@ Alternatively, you can produce a `RelWithDebInfo` build. This will have `-O2` op
 ```bash
 cmake -DCMAKE_BUILD_TYPE=RelWithDebInfo ..
 ```
+
+This code is released under the Apache License 2.0 license. See the [LICENSE](./LICENSE) file for more information.

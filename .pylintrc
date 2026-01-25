@@ -9,6 +9,7 @@ disable=
     consider-merging-isinstance,
     consider-using-f-string,
     consider-using-sys-exit,
+    duplicate-code,
     line-too-long,
     missing-docstring,
     missing-module-docstring,
@@ -21,7 +22,8 @@ disable=
     too-many-function-args,
     too-many-locals,
     too-many-positional-arguments,
-    too-many-statements
+    too-many-statements,
+    unexpected-keyword-arg
 
 [TYPECHECK]
-generated-members="cv2.*"
+generated-members="cv2.*,sentencepiece.*"

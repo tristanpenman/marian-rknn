@@ -1,10 +1,17 @@
 #!/usr/bin/env python3
 
 import sys
+import torch
+import numpy as np
+
+from infer import inference
 
 from rknn.api import RKNN
 
 DEFAULT_QUANT = False
+
+ENC_LEN = 32
+DEC_LEN = 32
 
 DECODER_INPUTS = ['input_ids', 'attention_mask', 'encoder_hidden_states']
 DECODER_INPUT_SIZE_LIST = [[1, 32], [1, 32], [1, 32, 512]]
@@ -39,11 +46,9 @@ def parse_arg():
 
     return input_path, platform, do_quant, output_path
 
-def convert(model_path, platform, do_quant, output_path, inputs, input_size_list):
-    # Create RKNN object
+def convert_model(model_path, platform, do_quant, output_path, inputs, input_size_list):
     rknn = RKNN(verbose=False)
 
-    # Pre-process config
     print('--> Config model')
     if ENABLE_DYNAMIC_INPUTS:
         # Warning: This is disabled by default, as the C++ rknn_api fails with
@@ -80,19 +85,48 @@ def convert(model_path, platform, do_quant, output_path, inputs, input_size_list
         exit(ret)
     print('done')
 
-    # Release
-    rknn.release()
+    return rknn
+
+
+def convert_weights(input_path, output_path):
+    tensor = torch.load(input_path, weights_only=True)
+    weights = tensor.detach().numpy().astype(np.float32)
+    weights.tofile(output_path)
+    return weights
+
 
 def main():
     input_path, platform, do_quant, output_path = parse_arg()
 
-    print('Converting encoder!')
-    convert(f"{input_path}/encoder.onnx", platform, do_quant,
-            f"{output_path}/encoder.rknn", ENCODER_INPUTS, ENCODER_INPUT_SIZE_LIST)
+    print('Converting encoder...')
+    rknn_enc = convert_model(f"{input_path}/encoder.onnx", platform, do_quant,
+                             f"{output_path}/encoder.rknn", ENCODER_INPUTS, ENCODER_INPUT_SIZE_LIST)
 
-    print('Converting decoder!')
-    convert(f"{input_path}/decoder.onnx", platform, do_quant,
-            f"{output_path}/decoder.rknn", DECODER_INPUTS, DECODER_INPUT_SIZE_LIST)
+    print('Converting decoder...')
+    rknn_dec = convert_model(f"{input_path}/decoder.onnx", platform, do_quant,
+                             f"{output_path}/decoder.rknn", DECODER_INPUTS, DECODER_INPUT_SIZE_LIST)
+
+    print('Converting LM weights...')
+    lm_weight = convert_weights(f"{input_path}/lm_weight.bin",
+                                f"{output_path}/lm_weight.raw")
+
+    print('Converting LM biases...')
+    lm_bias = convert_weights(f"{input_path}/lm_bias.bin",
+                              f"{output_path}/lm_bias.raw")
+
+    try:
+        if rknn_enc.init_runtime(target=None) != 0:
+            raise RuntimeError("Failed to initialize RKNN encoder runtime")
+
+        if rknn_dec.init_runtime(target=None) != 0:
+            raise RuntimeError("Failed to initialize RKNN decoder runtime")
+
+        inference(rknn_enc, rknn_dec, lm_weight, lm_bias, input_path, ENC_LEN, DEC_LEN)
+
+    finally:
+        rknn_enc.release()
+        rknn_dec.release()
+
 
 if __name__ == '__main__':
     main()
