@@ -41,8 +41,12 @@ int read_fp32_from_file(const char *path, int len, float *data)
         printf("fopen %s fail!\n", path);
         return -1;
     }
-    fread(data, sizeof(float), len, fp);
+    size_t read_len = fread(data, sizeof(float), len, fp);
     fclose(fp);
+    if (read_len != static_cast<size_t>(len)) {
+        printf("fread %s fail!\n", path);
+        return -1;
+    }
     return 0;
 }
 

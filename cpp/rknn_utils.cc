@@ -1,7 +1,7 @@
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <string>
-#include <memory.h>
 
 #include "rknn_api.h"
 #include "rknn_utils.h"
@@ -304,24 +304,26 @@ int rknn_utils_reset_all_buffer(MODEL_INFO* model_info)
         if (model_info->input_mem[i] != nullptr) {
             rknn_destroy_mem(model_info->ctx, model_info->input_mem[i]);
         }
-        memset(model_info->inputs, 0, sizeof(rknn_input)* model_info->n_input);
-        memset(model_info->in_attr, 0, sizeof(rknn_tensor_attr)* model_info->n_input);
-        memset(model_info->in_attr_native, 0, sizeof(rknn_tensor_attr)* model_info->n_input);
-        memset(model_info->input_mem, 0, sizeof(rknn_tensor_mem)* model_info->n_input);
-        memset(model_info->rkdmo_input_param, 0, sizeof(RKNN_UTILS_INPUT_PARAM)* model_info->n_input);
     }
 
     for (int i = 0; i < model_info->n_output; i++) {
         if (model_info->output_mem[i] != nullptr) {
             rknn_destroy_mem(model_info->ctx, model_info->output_mem[i]);
         }
-        memset(model_info->outputs, 0, sizeof(rknn_output)* model_info->n_output);
-        memset(model_info->out_attr, 0, sizeof(rknn_tensor_attr)* model_info->n_output);
-        memset(model_info->out_attr_native, 0, sizeof(rknn_tensor_attr)* model_info->n_output);
-        memset(model_info->output_mem, 0, sizeof(rknn_tensor_mem)* model_info->n_output);
-        memset(model_info->rkdmo_output_param, 0, sizeof(RKNN_UTILS_OUTPUT_PARAM)* model_info->n_output);
-
     }
+
+    memset(model_info->inputs, 0, sizeof(rknn_input) * model_info->n_input);
+    memset(model_info->in_attr, 0, sizeof(rknn_tensor_attr) * model_info->n_input);
+    memset(model_info->in_attr_native, 0, sizeof(rknn_tensor_attr) * model_info->n_input);
+    memset(model_info->input_mem, 0, sizeof(rknn_tensor_mem*) * model_info->n_input);
+    memset(model_info->rkdmo_input_param, 0, sizeof(RKNN_UTILS_INPUT_PARAM) * model_info->n_input);
+
+    memset(model_info->outputs, 0, sizeof(rknn_output) * model_info->n_output);
+    memset(model_info->out_attr, 0, sizeof(rknn_tensor_attr) * model_info->n_output);
+    memset(model_info->out_attr_native, 0, sizeof(rknn_tensor_attr) * model_info->n_output);
+    memset(model_info->output_mem, 0, sizeof(rknn_tensor_mem*) * model_info->n_output);
+    memset(model_info->rkdmo_output_param, 0, sizeof(RKNN_UTILS_OUTPUT_PARAM) * model_info->n_output);
+
     return 0;
 }
 

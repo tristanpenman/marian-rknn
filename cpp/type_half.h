@@ -1,16 +1,17 @@
 #pragma once
 
-#include <sys/types.h>
+#include <cstdint>
+#include <cstring>
 
 typedef unsigned short half;
 typedef unsigned short ushort;
 
-inline uint as_uint(const float x)
+inline uint32_t as_uint(const float x)
 {
     return *(uint*)&x;
 }
 
-inline float as_float(const uint x)
+inline float as_float(const uint32_t x)
 {
     return *(float*)&x;
 }
@@ -19,11 +20,11 @@ inline float as_float(const uint x)
 inline float half_to_float(half x)
 {
     // printf("1\n");
-    const uint e = (x&0x7C00)>>10; // exponent
+    const uint32_t e = (x&0x7C00)>>10; // exponent
     // printf("2\n");
-    const uint m = (x&0x03FF)<<13; // mantissa
+    const uint32_t m = (x&0x03FF)<<13; // mantissa
     // printf("3\n");
-    const uint v = as_uint((float)m)>>23; // evil log2 bit hack to count leading zeros in denormalized format
+    const uint32_t v = as_uint((float)m)>>23; // evil log2 bit hack to count leading zeros in denormalized format
     // printf("4\n");
 
     // sign : normalized : denormalized
@@ -32,8 +33,8 @@ inline float half_to_float(half x)
 
 typedef union suf32
 {
-  int i;
-  unsigned u;
+  int32_t i;
+  uint32_t u;
   float f;
 } suf32;
 
@@ -41,7 +42,7 @@ inline half float_to_half(float x)
 {
     suf32 in;
     in.f = x;
-    unsigned sign = in.u & 0x80000000;
+    uint32_t sign = in.u & 0x80000000;
     in.u ^= sign;
     ushort w;
 
@@ -51,7 +52,7 @@ inline half float_to_half(float x)
         in.f += 0.5f;
         w = (ushort)(in.u - 0x3f000000);
     } else {
-        unsigned t = in.u + 0xc8000fff;
+        uint32_t t = in.u + 0xc8000fff;
         w = (ushort)((t + ((in.u >> 13) & 1)) >> 13);
     }
 
