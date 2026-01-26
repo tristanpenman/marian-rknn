@@ -14,23 +14,25 @@
 // limitations under the License.
 
 #include <cstdio>
+#include <cstring>
+#include <iostream>
+#include <string>
 
 #include "marian_rknn.h"
 #include "easy_timer.h"
 
-void safe_flush()
-{
-    char c;
-    while ((c = getchar()) != '\n' && c != EOF);
-}
-
 int read_user_input(char* buffer)
 {
-    rewind(stdin);
-    printf("Enter text to translate:\n");
-    // TODO: use C++ standard library here
-    scanf("%[^\n]", buffer);
-    safe_flush();
+    std::cout << "Enter text to translate:\n";
+    std::string line;
+    if (!std::getline(std::cin, line)) {
+        return -1;
+    }
+    if (line.size() >= MAX_USER_INPUT_LEN) {
+        line.resize(MAX_USER_INPUT_LEN - 1);
+    }
+    std::strncpy(buffer, line.c_str(), MAX_USER_INPUT_LEN);
+    buffer[MAX_USER_INPUT_LEN - 1] = '\0';
 
     if (strcmp(buffer, "q") == 0) {
         return -1;
