@@ -1,6 +1,7 @@
 --extra-index-url https://download.pytorch.org/whl/cpu
 onnx~=1.18.0
 onnxruntime~=1.22.0
+pylint
 requests~=2.32.4
 rknn-toolkit2
 sentencepiece~=0.2.0

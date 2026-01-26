@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-import sys
+import argparse
 import torch
 import numpy as np
 
@@ -22,29 +22,43 @@ ENCODER_INPUT_SIZE_LIST = [[1, 32], [1, 32]]
 ENABLE_DYNAMIC_INPUTS = False
 
 def parse_arg():
-    if len(sys.argv) < 3:
-        print("Usage: python3 {} <input_path> [platform] [dtype(optional)] [output_path(optional)]".format(sys.argv[0]))
-        print("       platform choose from [rk3562, rk3566, rk3568, rk3576, rk3588, rv1126b, rv1109, rv1126, rk1808]")
-        print("       dtype choose from [fp] for [rk3562, rk3566, rk3568, rk3576, rk3588, rv1126b]")
-        print("       dtype choose from [fp] for [rv1109, rv1126, rk1808]")
-        exit(1)
+    parser = argparse.ArgumentParser(
+        description="Convert Marian ONNX models to RKNN.",
+    )
+    parser.add_argument("input_path", help="Path to the directory containing the ONNX files.")
+    parser.add_argument(
+        "platform",
+        choices=[
+            "rk3562",
+            "rk3566",
+            "rk3568",
+            "rk3576",
+            "rk3588",
+            "rv1126b",
+            "rv1109",
+            "rv1126",
+            "rk1808",
+        ],
+        help="Target platform.",
+    )
+    parser.add_argument(
+        "dtype",
+        nargs="?",
+        choices=["fp"],
+        help="Optional dtype (only 'fp' supported).",
+    )
+    parser.add_argument(
+        "output_path",
+        nargs="?",
+        help="Optional output directory for generated RKNN files (defaults to input_path).",
+    )
 
-    input_path = sys.argv[1]
-    platform = sys.argv[2]
+    args = parser.parse_args()
 
     do_quant = DEFAULT_QUANT
-    if len(sys.argv) > 3:
-        model_type = sys.argv[3]
-        if model_type not in ['fp']:
-            print("ERROR: Invalid model type: {}".format(model_type))
-            exit(1)
+    output_path = args.output_path or args.input_path
 
-    if len(sys.argv) > 4:
-        output_path = sys.argv[4]
-    else:
-        output_path = input_path
-
-    return input_path, platform, do_quant, output_path
+    return args.input_path, args.platform, do_quant, output_path
 
 def convert_model(model_path, platform, do_quant, output_path, inputs, input_size_list):
     rknn = RKNN(verbose=False)
