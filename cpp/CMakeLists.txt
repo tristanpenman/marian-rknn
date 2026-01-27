@@ -40,15 +40,15 @@ set(LIBTIMER_INCLUDES ${TIMER_PATH})
 
 # Eigen
 FetchContent_Declare(eigen
-  GIT_REPOSITORY https://gitlab.com/libeigen/eigen.git
-  GIT_TAG        5.0.1
+    GIT_REPOSITORY https://gitlab.com/libeigen/eigen.git
+    GIT_TAG        5.0.1
 )
 FetchContent_MakeAvailable(eigen)
 
 # JSON for Modern C++
 FetchContent_Declare(nlohmann_json
-  GIT_REPOSITORY https://github.com/nlohmann/json.git
-  GIT_TAG        v3.12.0
+    GIT_REPOSITORY https://github.com/nlohmann/json.git
+    GIT_TAG        v3.12.0
 )
 FetchContent_MakeAvailable(nlohmann_json)
 
@@ -75,6 +75,7 @@ target_compile_options(sentencepiece-static PRIVATE
 
 add_executable(${PROJECT_NAME}
     file_utils.cc
+    logger.cc
     main.cc
     marian_rknn.cc
     rknn_utils.cc
@@ -90,7 +91,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
 
 # Strip debug symbols from release builds
 target_link_options(${PROJECT_NAME} PRIVATE
-  $<$<CONFIG:Release>:-Wl,--strip-all>
+    $<$<CONFIG:Release>:-Wl,--strip-all>
 )
 
 target_include_directories(${PROJECT_NAME} PRIVATE
