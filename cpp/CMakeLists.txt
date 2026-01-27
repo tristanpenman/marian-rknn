@@ -34,10 +34,6 @@ set(RKNN_PATH ${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty/rknpu2)
 set(LIBRKNNRT ${RKNN_PATH}/lib/${TARGET_LIB_ARCH}/librknnrt.so)
 set(LIBRKNNRT_INCLUDES ${RKNN_PATH}/include)
 
-# timer
-set(TIMER_PATH ${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty/timer)
-set(LIBTIMER_INCLUDES ${TIMER_PATH})
-
 # Eigen
 FetchContent_Declare(eigen
     GIT_REPOSITORY https://gitlab.com/libeigen/eigen.git

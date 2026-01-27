@@ -1,5 +1,4 @@
-#ifndef _RKNN_DEMO_TIMER_H_
-#define _RKNN_DEMO_TIMER_H_
+#pragma once
 
 #include <sys/time.h>
 #include <stdio.h>
@@ -54,5 +53,3 @@ public:
         return (__get_us(stop_time) - __get_us(start_time)) / 1000;
     }
 };
-
-#endif // _RKNN_DEMO_TIMER_H_
