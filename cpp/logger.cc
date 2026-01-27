@@ -14,44 +14,23 @@ const char* levelLabel(Logger::Level level)
 {
     switch (level) {
     case Logger::Level::Info:
-        return "INFO";
+        return "I";
     case Logger::Level::Warning:
-        return "WARNING";
+        return "W";
     case Logger::Level::Error:
-        return "ERROR";
+        return "E";
     case Logger::Level::Verbose:
-        return "VERBOSE";
+        return "V";
     default:
-        return "UNKNOWN";
+        return "U";
     }
 }
 } // namespace
 
-Logger::Logger(const string& name, Level level)
-    : m_level(level)
+Logger::Logger(const string& name)
+  : m_name(name)
 {
     ostream* os = m_os.load();
-    m_enabled = os && level >= m_minLevel.load();
-    if (!m_enabled) {
-        return;
-    }
-
-    m_ss << "[" << levelLabel(level) << "][" << name << "] ";
-}
-
-Logger::~Logger()
-{
-    if (!m_enabled) {
-        return;
-    }
-
-    ostream* os = m_os.load();
-    if (!os) {
-        return;
-    }
-
-    lock_guard<mutex> lock(m_mutex);
-    *os << m_ss.str() << '\n';
 }
 
 void Logger::configure()
@@ -73,4 +52,39 @@ void Logger::configure(ostream &os, Level minLevel)
 {
     m_os = &os;
     m_minLevel = minLevel;
+}
+
+//
+// Logger::Writer implementation
+//
+
+Logger::Writer::Writer(Logger &logger, Level level)
+  : m_logger(logger)
+  , m_level(level)
+{
+    m_enabled = m_logger.m_os.load() && level >= m_logger.m_minLevel.load();
+    if (!m_enabled) {
+        return;
+    }
+
+    m_ss << "[" << levelLabel(level) << "]";
+    if (!m_logger.m_name.empty()) {
+        m_ss << "[" << m_logger.m_name << "]";
+    }
+    m_ss << " ";
+}
+
+Logger::Writer::~Writer()
+{
+    if (!m_enabled) {
+        return;
+    }
+
+    ostream* os = m_logger.m_os.load();
+    if (!os) {
+        return;
+    }
+
+    lock_guard<mutex> lock(m_logger.m_mutex);
+    *os << m_ss.str() << '\n';
 }

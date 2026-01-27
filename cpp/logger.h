@@ -9,12 +9,13 @@
 /**
  * Simple streaming logger
  *
- * This logger class is designed for ease-of-use and convenience, rather than for performance or thread safety.
+ * This logger class is designed for ease-of-use and convenience, while providing performance and thread safety.
  *
  * It is intended to be used like this:
  *
  *   #include "Logger.h"
  *
+ *   #undef LOG
  *   #define LOG Logger("MyCategory")
  *
  *   void myFunction()
@@ -22,12 +23,15 @@
  *     // enable logging, uses std::cout by default
  *     Logger::configure();
  *
- *     LOG << "Log some stuff, maybe even some value in hex: 0x" << hex << 23030;
+ *     // log info by default
+ *     LOG() << "Log some stuff, maybe even some value in hex: 0x" << hex << 23030;
+ *     LOG(WARNING) << "This is a warning message";
  *   }
  *
  * This would write the following to std::cout:
  *
- *   [INFO][MyCategory] Log some stuff, maybe even some value in hex: 0x59F6
+ *   [I][MyCategory] Log some stuff, maybe even some value in hex: 0x59F6
+ *   [W][MyCategory] This is a warning message
  *
  * The logger takes care of writing a new line to the end of the output, when its destructor is called. Content is
  * only written to the std::stringstream if the logger is configured and the log level is enabled.
@@ -46,18 +50,34 @@ public:
         Verbose = 3
     };
 
-    Logger(const std::string& name, Level level = Level::Info);
-
-    ~Logger();
-
-    template<typename T>
-    Logger& operator<<(T const & value)
+    class Writer
     {
-        if (m_enabled) {
-            m_ss << value;
+    public:
+        Writer(Logger &logger, Level level);
+        ~Writer();
+
+        template<typename T>
+        Writer& operator<<(T const & value)
+        {
+            if (m_enabled) {
+                m_ss << value;
+            }
+
+            return *this;
         }
 
-        return *this;
+    private:
+        Logger &m_logger;
+        Level m_level;
+        std::stringstream m_ss;
+        bool m_enabled{false};
+    };
+
+    Logger(const std::string& name = {});
+
+    Writer operator()(Level level = Level::Info)
+    {
+        return Writer{*this, level};
     }
 
     static void configure();
@@ -65,12 +85,21 @@ public:
     static void configure(Level minLevel);
     static void configure(std::ostream& os, Level minLevel);
 
+    static bool verbose()
+    {
+        return m_minLevel.load() <= Level::Verbose;
+    }
+
 private:
     static std::atomic<std::ostream*> m_os;
     static std::atomic<Level> m_minLevel;
     static std::mutex m_mutex;
 
-    Level m_level;
-    bool m_enabled{false};
-    std::stringstream m_ss;
+    std::string m_name;
 };
+
+#define LOG     Logger()
+#define INFO    Logger::Level::Info
+#define WARNING Logger::Level::Warning
+#define ERROR   Logger::Level::Error
+#define VERBOSE Logger::Level::Verbose

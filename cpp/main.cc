@@ -18,8 +18,11 @@
 #include <iostream>
 #include <string>
 
+#include "logger.h"
 #include "marian_rknn.h"
 #include "easy_timer.h"
+
+#define LOG Logger("marian-rknn")
 
 int read_user_input(char* buffer)
 {
@@ -43,6 +46,11 @@ int read_user_input(char* buffer)
 
 int main(int argc, char **argv)
 {
+    // enable logging, uses std::cout by default
+    Logger::configure();
+    LOG() << "Marian RKNN Translator Demo";
+    LOG(WARNING) << "This is a warning message";
+
     if (argc < 8) {
         printf("%s <encoder_path> <decoder_path> <source_spm> <target_spm> <vocab_json> <lm_weight> <lm_bias> <sentence ...>\n", argv[0]);
         return -1;
