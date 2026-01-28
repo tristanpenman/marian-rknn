@@ -62,10 +62,7 @@ struct MODEL_INFO
     rknn_tensor_mem **output_mem;
     RKNN_UTILS_OUTPUT_PARAM *rkdmo_output_param;
 
-    bool verbose_log = false;
     int diff_input_idx = -1;
-
-    // memory could be set ousider
     int init_flag = 0;
 
     rknn_input_range* dyn_range;

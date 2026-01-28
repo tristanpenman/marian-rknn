@@ -17,12 +17,11 @@
 #include <cstring>
 #include <iostream>
 #include <string>
+#include <vector>
 
+#include "easy_timer.h"
 #include "logger.h"
 #include "marian_rknn.h"
-#include "easy_timer.h"
-
-#define LOG Logger("marian-rknn")
 
 int read_user_input(char* buffer)
 {
@@ -48,19 +47,29 @@ int read_user_input(char* buffer)
 
 int main(int argc, char **argv)
 {
-    // enable logging, uses std::cout by default
-    Logger::configure();
-    LOG() << "Marian RKNN Translator Demo";
-    LOG(WARNING) << "This is a warning message";
+    bool verbose = false;
+    std::vector<const char*> positional_args;
+    positional_args.reserve(static_cast<size_t>(argc - 1));
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "-v") == 0 || strcmp(argv[i], "--verbose") == 0) {
+            verbose = true;
+            continue;
+        }
+        positional_args.push_back(argv[i]);
+    }
 
-    if (argc < 2) {
-        printf("%s <model_dir> <sentence ...>\n", argv[0]);
+    Logger::configure(std::cout, verbose ? Logger::Level::Verbose : Logger::Level::Info);
+    LOG(INFO) << "Marian RKNN Translator Demo";
+
+    if (positional_args.size() < 1) {
+        LOG(ERROR) << "Usage: " << argv[0]
+                   << " [-v|--verbose] <model_dir> <sentence ...>";
         return -1;
     }
 
     TIMER timer;
     bool is_receipt = false;
-    const char *model_dir = argv[1];
+    const char *model_dir = positional_args[0];
 
     rknn_marian_rknn_context_t rknn_app_ctx;
 
@@ -69,21 +78,21 @@ int main(int argc, char **argv)
     memset(input_strings, 0, MAX_USER_INPUT_LEN);
     memset(output_strings, 0, MAX_USER_INPUT_LEN);
 
-    int ret = init_marian_rknn_model(model_dir, &rknn_app_ctx);
+    int ret = init_marian_rknn_model(model_dir, verbose, &rknn_app_ctx);
     if (ret != 0) {
-        printf("init_marian_rknn_model fail!\n");
+        LOG(ERROR) << "init_marian_rknn_model failed";
         goto out;
     }
 
-    printf("--> model init complete\n");
-    if (argc > 2) {
+    LOG(INFO) << "Model init complete";
+    if (positional_args.size() > 2) {
         is_receipt = true;
-        for (int i = 2; i < argc; i++) {
-            strcat(input_strings, argv[i]);
+        for (size_t i = 2; i < positional_args.size(); i++) {
+            strcat(input_strings, positional_args[i]);
             strcat(input_strings, " ");
         }
 
-        printf("--> read input from cmd line: %s\n", input_strings);
+        LOG(INFO) << "Read input from cmd line: " << input_strings;
     }
 
     while (1) {
@@ -95,18 +104,18 @@ int main(int argc, char **argv)
             }
         }
 
-        printf("--> about to run inference...\n");
+        LOG(INFO) << "About to run inference...";
 
         timer.tik();
         ret = inference_marian_rknn_model(&rknn_app_ctx, input_strings, output_strings);
         if (ret != 0) {
-            printf("marian_rknn_model inference fail! ret=%d\n", ret);
+            LOG(ERROR) << "marian_rknn_model inference failed. ret=" << ret;
             break;
         }
         timer.tok();
-        timer.print_time("--> inference time");
+        timer.print_time("Inference time");
 
-        printf("--> output: %s\n", output_strings);
+        LOG(INFO) << "Output: " << output_strings;
 
         if (is_receipt == true) {
             break;
@@ -116,7 +125,7 @@ int main(int argc, char **argv)
 out:
     ret = release_marian_rknn_model(&rknn_app_ctx);
     if (ret != 0) {
-        printf("release_marian_rknn_model fail! ret=%d\n", ret);
+        LOG(ERROR) << "release_marian_rknn_model failed. ret=" << ret;
     }
     free(input_strings);
     free(output_strings);

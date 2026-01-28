@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "logger.h"
 // Define this macro to disable timing logs
 // #define TIMING_DISABLED // if you don't need to print the time used, uncomment this line of code
 
@@ -40,11 +41,13 @@ public:
 #else
     void print_time(char *str)
     {
-        printf("%s use: %f ms\n", str, get_time());
+        static Logger timer_logger("timer");
+        timer_logger(VERBOSE) << str << " use: " << get_time() << " ms";
     }
     void print_time(const char *str)
     {
-        printf("%s use: %f ms\n", str, get_time());
+        static Logger timer_logger("timer");
+        timer_logger(VERBOSE) << str << " use: " << get_time() << " ms";
     }
 #endif
 

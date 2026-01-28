@@ -67,6 +67,7 @@ struct rknn_marian_rknn_context_t
 
 int init_marian_rknn_model(
     const char* model_dir,
+    bool verbose,
     rknn_marian_rknn_context_t* app_ctx);
 
 int release_marian_rknn_model(

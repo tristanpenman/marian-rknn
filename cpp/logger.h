@@ -44,10 +44,10 @@ class Logger
 {
 public:
     enum class Level {
-        Info = 0,
-        Warning = 1,
-        Error = 2,
-        Verbose = 3
+        Verbose = 0,
+        Info = 1,
+        Warning = 2,
+        Error = 3
     };
 
     class Writer

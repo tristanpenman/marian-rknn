@@ -5,6 +5,7 @@
 
 #include "rknn_api.h"
 #include "rknn_utils.h"
+#include "logger.h"
 
 static void dump_tensor_attr(rknn_tensor_attr *attr)
 {
@@ -16,40 +17,43 @@ static void dump_tensor_attr(rknn_tensor_attr *attr)
         sprintf(dims_str, "%s%d,", temp_str, attr->dims[i]);
     }
 
-    printf("  index=%d, name=%s, n_dims=%d, dims=[%s], n_elems=%d, size=%d, "
-           "size_with_stride=%d, fmt=%s, type=%s, qnt_type=%s, "
-           "zp=%d, scale=%f\n",
-           attr->index, attr->name, attr->n_dims, dims_str,
-           attr->n_elems, attr->size, attr->size_with_stride,
-           get_format_string(attr->fmt), get_type_string(attr->type),
-           get_qnt_type_string(attr->qnt_type), attr->zp, attr->scale);
+    LOG(VERBOSE) << "  index=" << attr->index
+                 << ", name=" << attr->name
+                 << ", n_dims=" << attr->n_dims
+                 << ", dims=[" << dims_str
+                 << "], n_elems=" << attr->n_elems
+                 << ", size=" << attr->size
+                 << ", size_with_stride=" << attr->size_with_stride
+                 << ", fmt=" << get_format_string(attr->fmt)
+                 << ", type=" << get_type_string(attr->type)
+                 << ", qnt_type=" << get_qnt_type_string(attr->qnt_type)
+                 << ", zp=" << attr->zp
+                 << ", scale=" << attr->scale;
 }
 
 int rknn_utils_init(MODEL_INFO* model_info)
 {
     if (model_info->m_path == nullptr) {
-        printf("ERROR model path is null");
+        LOG(ERROR) << "Model path is null";
         return -1;
     }
 
     int ret = 0;
     ret = rknn_init(&model_info->ctx, (void *)model_info->m_path, 0, model_info->init_flag, NULL);
     if (ret < 0) {
-        printf("rknn_init fail! ret=%d\n", ret);
+        LOG(ERROR) << "rknn_init failed. ret=" << ret;
         return -1;
     }
 
     rknn_sdk_version version;
     ret = rknn_query(model_info->ctx, RKNN_QUERY_SDK_VERSION, &version, sizeof(rknn_sdk_version));
     if (ret != 0) {
-        printf("Failed to query RKNN runtime information, error: %d\n", ret);
+        LOG(ERROR) << "Failed to query RKNN runtime information, error=" << ret;
         return -1;
     }
 
-    if (model_info->verbose_log) {
-        printf("RKNN Runtime Information: librknnrt version: %s (api version: %s)\n",
-            version.drv_version, version.api_version);
-    }
+    LOG(VERBOSE) << "RKNN Runtime Information: librknnrt version: "
+                 << version.drv_version << " (api version: " << version.api_version << ")";
 
     ret = rknn_utils_query_model_info(model_info);
     return ret;
@@ -57,22 +61,16 @@ int rknn_utils_init(MODEL_INFO* model_info)
 
 int rknn_utils_query_model_info(MODEL_INFO* model_info)
 {
-    if (model_info->verbose_log==true) {
-        printf("rknn_utils_query_model_info");
-    }
-    int ret=0;
+    LOG(VERBOSE) << "rknn_utils_query_model_info";
 
     rknn_input_output_num io_num;
-    ret = rknn_query(model_info->ctx, RKNN_QUERY_IN_OUT_NUM, &io_num, sizeof(io_num));
+    int ret = rknn_query(model_info->ctx, RKNN_QUERY_IN_OUT_NUM, &io_num, sizeof(io_num));
     if (ret != RKNN_SUCC) {
-        printf("rknn_query fail! ret=%d\n", ret);
+        LOG(ERROR) << "rknn_query failed. ret=" << ret;
         return -1;
     }
 
-    if (model_info->verbose_log) {
-        printf("model input num: %d, output num: %d\n", io_num.n_input, io_num.n_output);
-    }
-
+    LOG(VERBOSE) << "model input num: " << io_num.n_input << ", output num: " << io_num.n_output;
     model_info->n_input = io_num.n_input;
     model_info->n_output = io_num.n_output;
 
@@ -80,8 +78,7 @@ int rknn_utils_query_model_info(MODEL_INFO* model_info)
     model_info->in_attr = (rknn_tensor_attr*)malloc(sizeof(rknn_tensor_attr) * model_info->n_input);
     model_info->in_attr_native = (rknn_tensor_attr*)malloc(sizeof(rknn_tensor_attr) * model_info->n_input);
     model_info->input_mem = (rknn_tensor_mem**)malloc(sizeof(rknn_tensor_mem*) * model_info->n_input);
-    model_info->rkdmo_input_param =
-        (RKNN_UTILS_INPUT_PARAM*)malloc(sizeof(RKNN_UTILS_INPUT_PARAM) * model_info->n_input);
+    model_info->rkdmo_input_param = (RKNN_UTILS_INPUT_PARAM*)malloc(sizeof(RKNN_UTILS_INPUT_PARAM) * model_info->n_input);
 
     for (int i = 0; i < model_info->n_input; i++) {
         memset(&(model_info->inputs[i]), 0, sizeof(rknn_input));
@@ -92,41 +89,36 @@ int rknn_utils_query_model_info(MODEL_INFO* model_info)
     model_info->out_attr = (rknn_tensor_attr*)malloc(sizeof(rknn_tensor_attr) * model_info->n_output);
     model_info->out_attr_native = (rknn_tensor_attr*)malloc(sizeof(rknn_tensor_attr) * model_info->n_output);
     model_info->output_mem = (rknn_tensor_mem**)malloc(sizeof(rknn_tensor_mem*) * model_info->n_output);
-    model_info->rkdmo_output_param =
-        (RKNN_UTILS_OUTPUT_PARAM*)malloc(sizeof(RKNN_UTILS_OUTPUT_PARAM) * model_info->n_output);
+    model_info->rkdmo_output_param = (RKNN_UTILS_OUTPUT_PARAM*)malloc(sizeof(RKNN_UTILS_OUTPUT_PARAM) * model_info->n_output);
 
     for (int i = 0; i < model_info->n_output; i++) {
         memset(&(model_info->outputs[i]), 0, sizeof(rknn_output));
         memset(&(model_info->rkdmo_output_param[i]), 0, sizeof(RKNN_UTILS_OUTPUT_PARAM));
     }
 
-    if (model_info->verbose_log) {
-        printf("INPUTS:\n");
-    }
 
+    LOG(VERBOSE) << "INPUTS:";
     for (int i = 0; i < model_info->n_input; i++) {
         model_info->in_attr[i].index = i;
         ret = rknn_query(model_info->ctx, RKNN_QUERY_INPUT_ATTR, &(model_info->in_attr[i]), sizeof(rknn_tensor_attr));
         if (ret != RKNN_SUCC) {
-            printf("rknn_query fail! ret=%d\n", ret);
+            LOG(ERROR) << "rknn_query failed. ret=" << ret;
             return -1;
         }
-        if (model_info->verbose_log) {
+        if (Logger::verbose()) {
             dump_tensor_attr(&model_info->in_attr[i]);
         }
     }
 
-    if (model_info->verbose_log) {
-        printf("OUTPUTS:\n");
-    }
+    LOG(VERBOSE) << "OUTPUTS:";
     for (int i = 0; i < model_info->n_output; i++) {
         model_info->out_attr[i].index = i;
         ret = rknn_query(model_info->ctx, RKNN_QUERY_OUTPUT_ATTR, &(model_info->out_attr[i]), sizeof(rknn_tensor_attr));
         if (ret != RKNN_SUCC) {
-            printf("rknn_query fail! ret=%d\n", ret);
+            LOG(ERROR) << "rknn_query failed. ret=" << ret;
             return -1;
         }
-        if (model_info->verbose_log==true) {
+        if (Logger::verbose()) {
             dump_tensor_attr(&model_info->out_attr[i]);
         }
     }
@@ -134,7 +126,7 @@ int rknn_utils_query_model_info(MODEL_INFO* model_info)
     if (model_info->init_flag > 0) {
         ret = rknn_query(model_info->ctx, RKNN_QUERY_MEM_SIZE, &model_info->mem_size, sizeof(model_info->mem_size));
         if (ret != RKNN_SUCC) {
-            printf("rknn_query fail! ret=%d\n", ret);
+            LOG(ERROR) << "rknn_query failed. ret=" << ret;
             return -1;
         }
     }
@@ -157,7 +149,7 @@ int rknn_utils_get_type_size(rknn_tensor_type type)
     case RKNN_TENSOR_INT32:
         return 4;
     default:
-        printf("ERROR: not support tensor type %s", get_type_string(type));
+        LOG(ERROR) << "Unsupported tensor type: " << get_type_string(type);
         return -1;
     }
 }
@@ -171,7 +163,7 @@ int rknn_utils_init_input_buffer(
     rknn_tensor_format layout_fmt)
 {
     if (model_info->rkdmo_input_param[node_index]._already_init) {
-        printf("ERROR model input buffer already init\n");
+        LOG(ERROR) << "Model input buffer already initialized";
         return -1;
     }
     model_info->rkdmo_input_param[node_index]._already_init = true;
@@ -185,12 +177,11 @@ int rknn_utils_init_input_buffer(
         model_info->inputs[node_index].fmt = layout_fmt;
         model_info->inputs[node_index].size = model_info->in_attr[node_index].n_elems * elem_size;
 
-        if (model_info->verbose_log) {
-            printf("rknn_utils_init_input_buffer: node_index=%d, size=%d, n_elems=%d, fmt=%s, type=%s\n",
-                node_index, model_info->inputs[node_index].size, model_info->in_attr[node_index].n_elems,
-                get_format_string(layout_fmt),
-                get_type_string(dtype));
-        }
+        LOG(VERBOSE) << "rknn_utils_init_input_buffer: node_index=" << node_index
+                        << ", size=" << model_info->inputs[node_index].size
+                        << ", n_elems=" << model_info->in_attr[node_index].n_elems
+                        << ", fmt=" << get_format_string(layout_fmt)
+                        << ", type=" << get_type_string(dtype);
         return 0;
     }
 
@@ -204,26 +195,23 @@ int rknn_utils_init_input_buffer(
             model_info->input_mem[node_index] = rknn_create_mem(model_info->ctx, model_info->in_attr[node_index].size_with_stride);
         }
 
-        if (model_info->verbose_log) {
-            printf("rknn_utils_init_input_buffer(zero copy): node_index=%d, size %d, size with stride %d, fmt=%s, type=%s\n",
-                node_index,
-                model_info->in_attr[node_index].size,
-                model_info->in_attr[node_index].size_with_stride,
-                get_format_string(layout_fmt),
-                get_type_string(dtype));
-        }
+        LOG(VERBOSE) << "rknn_utils_init_input_buffer(zero copy): node_index=" << node_index
+                     << ", size " << model_info->in_attr[node_index].size
+                     << ", size with stride " << model_info->in_attr[node_index].size_with_stride
+                     << ", fmt=" << get_format_string(layout_fmt)
+                     << ", type=" << get_type_string(dtype);
 
         return 0;
     }
 
-    printf("unsupported api type: %d\n", api_type);
+    LOG(ERROR) << "Unsupported api type: " << api_type;
     return -1;
 }
 
 int rknn_utils_init_output_buffer(MODEL_INFO* model_info, int node_index, API_TYPE api_type)
 {
     if (model_info->rkdmo_output_param[node_index]._already_init) {
-        printf("ERROR model output buffer already init");
+        LOG(ERROR) << "Model output buffer already initialized";
         return -1;
     }
     model_info->rkdmo_output_param[node_index]._already_init = true;
@@ -231,16 +219,13 @@ int rknn_utils_init_output_buffer(MODEL_INFO* model_info, int node_index, API_TY
 
     if (api_type == NORMAL_API) {
         model_info->outputs[node_index].index = node_index;
-        if (model_info->verbose_log) {
-            printf("rknn_utils_init_output_buffer: node_index=%d\n", node_index);
-        }
+        LOG(VERBOSE) << "rknn_utils_init_output_buffer: node_index=" << node_index;
     } else if (api_type == ZERO_COPY_API) {
         int elem_size = rknn_utils_get_type_size(model_info->out_attr[node_index].type);
         model_info->output_mem[node_index] = rknn_create_mem(model_info->ctx, model_info->out_attr[node_index].n_elems * elem_size);
-        if (model_info->verbose_log) {
-            printf("rknn_utils_init_output_buffer(zero copy): node_index=%d, size with stride %d\n",
-                node_index, model_info->out_attr[node_index].size);
-        }
+        LOG(VERBOSE) << "rknn_utils_init_output_buffer(zero copy): node_index="
+                     << node_index << ", size with stride "
+                     << model_info->out_attr[node_index].size;
     }
     return 0;
 }
@@ -252,7 +237,7 @@ int rknn_utils_init_input_buffer_all(MODEL_INFO* model_info, API_TYPE default_ap
 
     for (int i = 0; i < model_info->n_input; i++) {
         if (model_info->rkdmo_input_param[i]._already_init) {
-            printf("model input buffer already init, ignore\n");
+            LOG(WARNING) << "Model input buffer already init, ignore";
             continue;
         }
         int ret;
@@ -281,7 +266,7 @@ int rknn_utils_init_output_buffer_all(MODEL_INFO* model_info, API_TYPE default_a
 {
     for (int i = 0; i < model_info->n_output; i++) {
         if (model_info->rkdmo_output_param[i]._already_init) {
-            printf("model output buffer already init, ignore");
+            LOG(WARNING) << "Model output buffer already init, ignore";
             continue;
         }
 
@@ -339,8 +324,9 @@ static void dump_input_dynamic_range(rknn_input_range *dyn_range)
         range_str += "]";
     }
 
-    printf("  index=%d, name=%s, shape_number=%d, range=[%s], fmt = %s\n", dyn_range->index, dyn_range->name,
-           dyn_range->shape_number, range_str.c_str(), get_format_string(dyn_range->fmt));
+    LOG(VERBOSE) << "  index=" << dyn_range->index << ", name=" << dyn_range->name
+                 << ", shape_number=" << dyn_range->shape_number
+                 << ", range=[" << range_str << "], fmt=" << get_format_string(dyn_range->fmt);
 }
 
 int rknn_utils_release(MODEL_INFO* model_info)

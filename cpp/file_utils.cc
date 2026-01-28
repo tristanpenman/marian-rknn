@@ -7,6 +7,7 @@
 #include <nlohmann/json.hpp>
 
 #include "file_utils.h"
+#include "logger.h"
 
 using json = nlohmann::json;
 
@@ -27,7 +28,7 @@ int read_data_from_file(const char *path, char **out_data)
 {
     FILE *fp = fopen(path, "rb");
     if (fp == NULL) {
-        printf("fopen %s fail!\n", path);
+        LOG(ERROR) << "Failed to open file: " << path;
         return -1;
     }
     fseek(fp, 0, SEEK_END);
@@ -36,7 +37,7 @@ int read_data_from_file(const char *path, char **out_data)
     data[file_size] = 0;
     fseek(fp, 0, SEEK_SET);
     if (file_size != fread(data, 1, file_size, fp)) {
-        printf("fread %s fail!\n", path);
+        LOG(ERROR) << "Failed to read file: " << path;
         free(data);
         fclose(fp);
         return -1;
@@ -52,13 +53,13 @@ int read_fp32_from_file(const char *path, int len, float *data)
 {
     FILE *fp = fopen(path, "rb");
     if (fp == NULL) {
-        printf("fopen %s fail!\n", path);
+        LOG(ERROR) << "Failed to open file: " << path;
         return -1;
     }
     size_t read_len = fread(data, sizeof(float), len, fp);
     fclose(fp);
     if (read_len != static_cast<size_t>(len)) {
-        printf("fread %s fail!\n", path);
+        LOG(ERROR) << "Failed to read file: " << path;
         return -1;
     }
     return 0;
