@@ -2,12 +2,26 @@
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
+#include <string>
 
 #include <nlohmann/json.hpp>
 
 #include "file_utils.h"
 
 using json = nlohmann::json;
+
+std::string join_path(const std::string& dir, const char* name)
+{
+    if (dir.empty()) {
+        return std::string(name);
+    }
+
+    if (dir.back() == '/') {
+        return dir + name;
+    }
+
+    return dir + "/" + name;
+}
 
 int read_data_from_file(const char *path, char **out_data)
 {

@@ -38,36 +38,35 @@ struct rknn_marian_lm_head_t
 
 struct rknn_marian_rknn_context_t
 {
-    MODEL_INFO enc;
-    MODEL_INFO dec;
-
+    // read from spm files
     sentencepiece::SentencePieceProcessor spm_src;
     sentencepiece::SentencePieceProcessor spm_tgt;
 
+    // read from vocab file
     std::unordered_map<std::string, int> vocab;
     std::unordered_map<int, std::string> vocab_inv;
 
+    // rknn encoder and decoder
+    MODEL_INFO enc;
+    MODEL_INFO dec;
 
-    int bos_token_id; // 0
-    int eos_token_id; // 0
+    // read from lm weight and bias files
+    rknn_marian_lm_head_t lm_head;
 
-    int decoder_start_token_id; // 59513
-    int pad_token_id; // 59513
+    // read from config file
+    int bos_token_id;
+    int eos_token_id;
+    int decoder_start_token_id;
+    int pad_token_id;
+    int unk_token_id;
 
+    // other constants
     int enc_len;
     int dec_len;
-
-    rknn_marian_lm_head_t lm_head;
 };
 
 int init_marian_rknn_model(
-    const char* encoder_path,
-    const char* decoder_path,
-    const char* source_spm_path,
-    const char* target_spm_path,
-    const char* vocab_path,
-    const char* lm_weight_path,
-    const char* lm_bias_path,
+    const char* model_dir,
     rknn_marian_rknn_context_t* app_ctx);
 
 int release_marian_rknn_model(

@@ -16,6 +16,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <fstream>
 #include <vector>
 
 // external
@@ -24,20 +25,17 @@
 #include <sentencepiece_processor.h>
 
 // thirdparty
-#include "easy_timer.h"
 #include "rknn_api.h"
 
 // internal
+#include "easy_timer.h"
 #include "file_utils.h"
 #include "marian_rknn.h"
 #include "rknn_utils.h"
 #include "type_half.h"
 
-#define EMBEDDING_DIM 512
-#define DECODER_LAYER_NUM 6
-#define MAX_SENTENCE_LEN 32
-#define MAX_WORD_NUM_IN_SENTENCE 64
-#define MAX_WORD_LEN 64
+using json = nlohmann::json;
+
 #define VERBOSE 0
 
 // encoder input
@@ -252,19 +250,55 @@ int rknn_nmt_process(
 }
 
 int init_marian_rknn_model(
-    const char* encoder_path,
-    const char* decoder_path,
-    const char* source_spm_path,
-    const char* target_spm_path,
-    const char* vocab_path,
-    const char* lm_weight_path,
-    const char* lm_bias_path,
+    const char* model_dir,
     rknn_marian_rknn_context_t* app_ctx)
 {
     int ret = 0;
 
-    printf("--> init rknn encoder %s\n", encoder_path);
-    app_ctx->enc.m_path = encoder_path;
+    std::string config_path = join_path(model_dir, "config.json");
+    std::string encoder_path = join_path(model_dir, "encoder.rknn");
+    std::string decoder_path = join_path(model_dir, "decoder.rknn");
+    std::string source_spm_path = join_path(model_dir, "source.spm");
+    std::string target_spm_path = join_path(model_dir, "target.spm");
+    std::string vocab_path = join_path(model_dir, "vocab.json");
+    std::string lm_weight_path = join_path(model_dir, "lm_weight.raw");
+    std::string lm_bias_path = join_path(model_dir, "lm_bias.raw");
+
+    printf("--> load config %s\n", config_path.c_str());
+    std::ifstream config_file(config_path);
+    if (!config_file) {
+        printf("Failed to open config file: %s\n", config_path.c_str());
+        return -1;
+    }
+    json config;
+    config_file >> config;
+    if (!config.is_object()) {
+        printf("Config is not a JSON object: %s\n", config_path.c_str());
+        return -1;
+    }
+
+    int d_model = config.value("d_model", 0);
+    int vocab_size = config.value("vocab_size", 0);
+    if (d_model <= 0 || vocab_size <= 0) {
+        printf("Config missing required fields: d_model=%d vocab_size=%d\n", d_model, vocab_size);
+        return -1;
+    }
+    app_ctx->decoder_start_token_id = config.value("decoder_start_token_id", 59513);
+    app_ctx->pad_token_id = config.value("pad_token_id", app_ctx->decoder_start_token_id);
+    app_ctx->eos_token_id = config.value("eos_token_id", 0);
+    app_ctx->bos_token_id = config.value("bos_token_id", 0);
+    app_ctx->unk_token_id = config.value("unk_token_id", 0);
+
+    printf("--> d_model: %d\n", d_model);
+    printf("--> vocab size: %d\n", vocab_size);
+    printf("--> decoder start token id: %d\n", app_ctx->decoder_start_token_id);
+    printf("--> pad token id: %d\n", app_ctx->pad_token_id);
+    printf("--> eos token id: %d\n", app_ctx->eos_token_id);
+    printf("--> bos token id: %d\n", app_ctx->bos_token_id);
+    printf("--> unk token id: %d\n", app_ctx->unk_token_id);
+
+    printf("--> init rknn encoder %s\n", encoder_path.c_str());
+    app_ctx->enc.m_path = encoder_path.c_str();
     app_ctx->enc.verbose_log = VERBOSE;
     ret = rknn_utils_init(&app_ctx->enc);
     if (ret != 0) {
@@ -272,8 +306,8 @@ int init_marian_rknn_model(
         return -1;
     }
 
-    printf("--> init rknn decoder %s\n", decoder_path);
-    app_ctx->dec.m_path = decoder_path;
+    printf("--> init rknn decoder %s\n", decoder_path.c_str());
+    app_ctx->dec.m_path = decoder_path.c_str();
     app_ctx->dec.verbose_log = VERBOSE;
     ret = rknn_utils_init(&app_ctx->dec);
     if (ret != 0) {
@@ -379,16 +413,16 @@ int init_marian_rknn_model(
     ps = app_ctx->spm_tgt.GetPieceSize();
     printf("--> target piece size: %d\n", ps);
 
-    int D = app_ctx->lm_head.D = 512;
-    int V = app_ctx->lm_head.V = 59514;
+    int D = app_ctx->lm_head.D = d_model;
+    int V = app_ctx->lm_head.V = vocab_size;
 
     printf("--> load lm weight\n");
     app_ctx->lm_head.Wt = (float*)(malloc(sizeof(float) * V * D));
-    read_fp32_from_file(lm_weight_path, V * D, app_ctx->lm_head.Wt);
+    read_fp32_from_file(lm_weight_path.c_str(), V * D, app_ctx->lm_head.Wt);
 
     printf("--> load lm bias\n");
     app_ctx->lm_head.b = (float*)(malloc(sizeof(float) * V));
-    read_fp32_from_file(lm_bias_path, V, app_ctx->lm_head.b);
+    read_fp32_from_file(lm_bias_path.c_str(), V, app_ctx->lm_head.b);
 
     printf("--> load vocab\n");
     read_map_from_file(vocab_path, app_ctx->vocab);
@@ -404,20 +438,6 @@ int init_marian_rknn_model(
 
         app_ctx->vocab_inv.emplace(entry.second, entry.first);
     }
-
-    // TODO: Read these from config file
-
-    app_ctx->decoder_start_token_id = 59513;
-    printf("--> decoder start token id: %d\n", app_ctx->decoder_start_token_id);
-
-    app_ctx->pad_token_id = 59513;
-    printf("--> pad token id: %d\n", app_ctx->pad_token_id);
-
-    app_ctx->eos_token_id = 0;
-    printf("--> eos token id: %d\n", app_ctx->eos_token_id);
-
-    app_ctx->bos_token_id = 0;
-    printf("--> bos token id: %d\n", app_ctx->bos_token_id);
 
     return 0;
 }
@@ -459,7 +479,7 @@ int inference_marian_rknn_model(
         auto itr = app_ctx->vocab.find(piece);
         if (itr == app_ctx->vocab.end()) {
             // unknown token
-            encoded_tokens.push_back(0);
+            encoded_tokens.push_back(app_ctx->unk_token_id);
         } else {
             encoded_tokens.push_back(itr->second);
         }

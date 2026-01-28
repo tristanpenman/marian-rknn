@@ -4,6 +4,15 @@
 #include <unordered_map>
 
 /**
+ * @brief Join directory and file name to form a path
+ *
+ * @param dir [in] Directory path
+ * @param name [in] File name
+ * @return std::string Joined path
+ */
+std::string join_path(const std::string& dir, const char* name);
+
+/**
  * @brief Read data from file
  *
  * @param path [in] File path

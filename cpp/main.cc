@@ -31,9 +31,11 @@ int read_user_input(char* buffer)
     if (!std::getline(std::cin, line)) {
         return -1;
     }
+
     if (line.size() >= MAX_USER_INPUT_LEN) {
         line.resize(MAX_USER_INPUT_LEN - 1);
     }
+
     std::strncpy(buffer, line.c_str(), MAX_USER_INPUT_LEN);
     buffer[MAX_USER_INPUT_LEN - 1] = '\0';
 
@@ -51,20 +53,14 @@ int main(int argc, char **argv)
     LOG() << "Marian RKNN Translator Demo";
     LOG(WARNING) << "This is a warning message";
 
-    if (argc < 8) {
-        printf("%s <encoder_path> <decoder_path> <source_spm> <target_spm> <vocab_json> <lm_weight> <lm_bias> <sentence ...>\n", argv[0]);
+    if (argc < 2) {
+        printf("%s <model_dir> <sentence ...>\n", argv[0]);
         return -1;
     }
 
     TIMER timer;
-
-    const char *encoder_path = argv[1];
-    const char *decoder_path = argv[2];
-    const char *source_spm_path = argv[3];
-    const char *target_spm_path = argv[4];
-    const char *vocab_path = argv[5];
-    const char *lm_weight_path = argv[6];
-    const char *lm_bias_path = argv[7];
+    bool is_receipt = false;
+    const char *model_dir = argv[1];
 
     rknn_marian_rknn_context_t rknn_app_ctx;
 
@@ -73,29 +69,16 @@ int main(int argc, char **argv)
     memset(input_strings, 0, MAX_USER_INPUT_LEN);
     memset(output_strings, 0, MAX_USER_INPUT_LEN);
 
-    bool is_receipt = false;
-
-    int ret = init_marian_rknn_model(
-        encoder_path,
-        decoder_path,
-        source_spm_path,
-        target_spm_path,
-        vocab_path,
-        lm_weight_path,
-        lm_bias_path,
-        &rknn_app_ctx);
-
+    int ret = init_marian_rknn_model(model_dir, &rknn_app_ctx);
     if (ret != 0) {
         printf("init_marian_rknn_model fail!\n");
         goto out;
     }
 
     printf("--> model init complete\n");
-
-    // receipt string to translate
-    if (argc > 8) {
+    if (argc > 2) {
         is_receipt = true;
-        for (int i = 8; i < argc; i++) {
+        for (int i = 2; i < argc; i++) {
             strcat(input_strings, argv[i]);
             strcat(input_strings, " ");
         }
