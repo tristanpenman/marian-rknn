@@ -80,11 +80,11 @@ target_compile_options(sentencepiece-static PRIVATE
 )
 
 add_executable(${PROJECT_NAME}
-    file_utils.cc
-    logger.cc
-    main.cc
-    marian_rknn.cc
-    rknn_utils.cc
+    src/file_utils.cc
+    src/logger.cc
+    src/main.cc
+    src/marian_rknn.cc
+    src/rknn_utils.cc
 )
 
 target_link_libraries(${PROJECT_NAME} PRIVATE
@@ -101,7 +101,7 @@ target_link_options(${PROJECT_NAME} PRIVATE
 )
 
 target_include_directories(${PROJECT_NAME} PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
     ${LIBRKNNRT_INCLUDES}
     ${LIBSENTENCEPIECE_INCLUDES}
     ${LIBTIMER_INCLUDES}
@@ -110,8 +110,8 @@ target_include_directories(${PROJECT_NAME} PRIVATE
 if(BUILD_TESTING)
     add_executable(${PROJECT_NAME}-tests
         tests/file_utils_test.cc
-        file_utils.cc
-        logger.cc
+        src/file_utils.cc
+        src/logger.cc
     )
 
     target_link_libraries(${PROJECT_NAME}-tests PRIVATE
@@ -120,7 +120,7 @@ if(BUILD_TESTING)
     )
 
     target_include_directories(${PROJECT_NAME}-tests PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
     )
 endif()
 
