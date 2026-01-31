@@ -48,6 +48,16 @@ FetchContent_Declare(nlohmann_json
 )
 FetchContent_MakeAvailable(nlohmann_json)
 
+# googletest
+if(BUILD_TESTING)
+    set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
+    FetchContent_Declare(googletest
+        GIT_REPOSITORY https://github.com/google/googletest.git
+        GIT_TAG        v1.17.0
+    )
+    FetchContent_MakeAvailable(googletest)
+endif()
+
 # sentencepiece options: statically linked, no tcmalloc
 set(SPM_ENABLE_SHARED OFF CACHE BOOL INTERNAL)
 set(SPM_ENABLE_TCMALLOC OFF CACHE BOOL INTERNAL)
@@ -96,6 +106,23 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     ${LIBSENTENCEPIECE_INCLUDES}
     ${LIBTIMER_INCLUDES}
 )
+
+if(BUILD_TESTING)
+    add_executable(${PROJECT_NAME}-tests
+        tests/file_utils_test.cc
+        file_utils.cc
+        logger.cc
+    )
+
+    target_link_libraries(${PROJECT_NAME}-tests PRIVATE
+        GTest::gtest_main
+        nlohmann_json::nlohmann_json
+    )
+
+    target_include_directories(${PROJECT_NAME}-tests PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+    )
+endif()
 
 message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 message(STATUS "Generator: ${CMAKE_GENERATOR} (multi-config: ${isMultiConfig})")
