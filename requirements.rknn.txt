@@ -1,0 +1,3 @@
+rknn-toolkit-lite2==2.3.2
+sentencepiece==0.2.1
+setuptools<81

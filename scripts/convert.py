@@ -4,20 +4,17 @@ import argparse
 import torch
 import numpy as np
 
-from infer import inference
+from infer import inference, DEC_LEN, ENC_LEN, MODEL_DIM
 
 from rknn.api import RKNN
 
 DEFAULT_QUANT = False
 
-ENC_LEN = 32
-DEC_LEN = 32
-
 DECODER_INPUTS = ['input_ids', 'attention_mask', 'encoder_hidden_states']
-DECODER_INPUT_SIZE_LIST = [[1, 32], [1, 32], [1, 32, 512]]
+DECODER_INPUT_SIZE_LIST = [[1, DEC_LEN], [1, DEC_LEN], [1, DEC_LEN, MODEL_DIM]]
 
 ENCODER_INPUTS = ['input_ids', 'attention_mask']
-ENCODER_INPUT_SIZE_LIST = [[1, 32], [1, 32]]
+ENCODER_INPUT_SIZE_LIST = [[1, ENC_LEN], [1, ENC_LEN]]
 
 ENABLE_DYNAMIC_INPUTS = False
 
