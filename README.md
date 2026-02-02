@@ -17,6 +17,11 @@ This repo contains an implementation of MarianMT that runs on Rockchip NPU (RKNN
   * [Get Model Path](#get-model-path)
   * [Export to ONNX](#export-to-onnx)
   * [ONNX to RKNN](#onnx-to-rknn)
+* [Inference](#inference)
+  * [Dependencies](#dependencies)
+  * [Model Output](#model-output)
+  * [Show Time!](#show-time)
+  * [Beam Search](#beam-search)
 * [License](#license)
 
 ## Background
@@ -298,6 +303,97 @@ W inference: The 'data_format' is not set, and its default value is 'nhwc'!
 W inference: The 'data_format' is not set, and its default value is 'nhwc'!
 Je suis un poisson
 >
+```
+
+## Inference
+
+To run the model on your Rockchip device, you will need to install some dependencies and copy across the converted model files.
+
+### Dependencies
+
+It is recommended that you install Python dependencies in Python virtual environment. Start by creating the environment:
+
+```bash
+python3 -m venv venv
+```
+
+Then you can activate it like so:
+
+```bash
+source venv/bin/activate
+```
+
+Now you can install other packages using `pip`:
+
+```bash
+pip install -r requirements.lite.txt
+```
+
+The main dependency here is [RKNN Toolkit Lite](https://github.com/rockchip-linux/rknn-toolkit/tree/master/rknn-toolkit-lite), which is a trimmed down version of the RKNN Toolkit with individual device / NPU support added.
+
+### Model Outputs
+
+You will also need to copy the conversion output from earlier onto your device:
+
+```bash
+scp -r outs <edge2-ip>:~
+```
+
+### Show Time!
+
+You can now run the inference script:
+
+```bash
+python scripts/infer.py
+```
+
+When no arguments are provided, this script will simply print out usage information:
+
+```
+usage: infer.py [-h] [--beam-search] [--beam-depth BEAM_DEPTH] [--beam-width BEAM_WIDTH] model_path [inputs ...]
+infer.py: error: the following arguments are required: model_path, inputs
+```
+
+```bash
+python scripts/infer.py outs/dd7f6540a7a48a7f4db59e5c0b9c42c8eea67f18
+```
+
+While loading, the output should look something like this:
+
+```log
+W rknn-toolkit-lite2 version: 2.3.2
+I RKNN: [08:58:26.109] RKNN Runtime Information, librknnrt version: 2.3.2 (429f97ae6b@2025-04-09T09:09:27)
+I RKNN: [08:58:26.109] RKNN Driver Information, version: 0.9.8
+I RKNN: [08:58:26.109] RKNN Model Information, version: 6, toolkit version: 2.3.2(compiler version: 2.3.2 (e045de294f@2025-04-07T19:48:25)), target: RKNPU v2, target platform: rk3588, framework name: ONNX, framework layout: NCHW, model inference type: static_shape
+W RKNN: [08:58:26.240] query RKNN_QUERY_INPUT_DYNAMIC_RANGE error, rknn model is static shape type, please export rknn with dynamic_shapes
+W Query dynamic range failed. Ret code: RKNN_ERR_MODEL_INVALID. (If it is a static shape RKNN model, please ignore the above warning message.)
+W rknn-toolkit-lite2 version: 2.3.2
+I RKNN: [08:58:26.377] RKNN Runtime Information, librknnrt version: 2.3.2 (429f97ae6b@2025-04-09T09:09:27)
+I RKNN: [08:58:26.377] RKNN Driver Information, version: 0.9.8
+I RKNN: [08:58:26.378] RKNN Model Information, version: 6, toolkit version: 2.3.2(compiler version: 2.3.2 (e045de294f@2025-04-07T19:48:25)), target: RKNPU v2, target platform: rk3588, framework name: ONNX, framework layout: NCHW, model inference type: static_shape
+W RKNN: [08:58:26.527] query RKNN_QUERY_INPUT_DYNAMIC_RANGE error, rknn model is static shape type, please export rknn with dynamic_shapes
+W Query dynamic range failed. Ret code: RKNN_ERR_MODEL_INVALID. (If it is a static shape RKNN model, please ignore the above warning message.)
+Enter text to translate (empty line to quit):
+>
+```
+
+Don't worry about the warnings. The most important thing is that the final prompt is visible, and that translations behave as expected:
+
+```
+Enter text to translate (empty line to quit):
+> I am a fish
+Je suis un poisson
+>
+```
+
+### Beam Search
+
+The last thing worth mentioning is support for [Beam Search](https://en.wikipedia.org/wiki/Beam_search). The default behaviour of the inference script is to use Greedy Search, which simply consumes tokens as they are generated. Beam Search is an alternative that allows multiple paths to be explored iteratively. Although it can be a little slower, it can be lead to higher quality outputs.
+
+This can enabled using the `--beam-search` option. The beam depth and beam width can also be configured using command line arguments:
+
+```bash
+python scripts/infer.py --beam-search --beam-width 3 outs/dd7f6540a7a48a7f4db59e5c0b9c42c8eea67f18
 ```
 
 ## License
