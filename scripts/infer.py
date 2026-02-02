@@ -69,6 +69,62 @@ def prepare_encoder_inputs(tokens, enc_len, pad_token_id, eos_token_id):
     attention_mask = build_attention_mask(input_ids, eos_token_id)
     return input_ids, attention_mask
 
+def beam_search_decode(
+    rknn_dec,
+    attention_mask,
+    encoder_hidden_states,
+    weight,
+    bias,
+    decoder_start_token_id,
+    pad_token_id,
+    eos_token_id,
+    dec_len,
+    beam_width,
+    beam_depth
+):
+    max_steps = min(dec_len - 1, beam_depth) if beam_depth else dec_len - 1
+    beams = [([], 0.0, False)]
+
+    for step in range(max_steps):
+        candidates = []
+        for tokens, score, finished in beams:
+            if finished:
+                candidates.append((tokens, score, True))
+                continue
+
+            decoder_input_ids = np.full((1, dec_len), pad_token_id, dtype=np.int32)
+            decoder_input_ids[0, 0] = decoder_start_token_id
+            for index, token in enumerate(tokens):
+                position = index + 1
+                if position < dec_len:
+                    decoder_input_ids[0, position] = token
+
+            outputs = rknn_dec.inference(
+                inputs=[decoder_input_ids, attention_mask, encoder_hidden_states]
+            )
+            decoder_output = outputs[0]
+            hidden = decoder_output[0, step, :].astype(np.float32)
+            logits = hidden @ weight.T + bias
+
+            logits -= np.max(logits)
+            exp_logits = np.exp(logits)
+            probs = exp_logits / np.sum(exp_logits)
+
+            top_indices = np.argsort(probs)[-beam_width:][::-1]
+            for token_id in top_indices:
+                token_id = int(token_id)
+                new_tokens = tokens + [token_id]
+                new_score = score + float(np.log(probs[token_id] + 1e-9))
+                candidates.append((new_tokens, new_score, token_id == eos_token_id))
+
+        candidates.sort(key=lambda item: item[1], reverse=True)
+        beams = candidates[:beam_width]
+        if all(finished for _, _, finished in beams):
+            break
+
+    best_tokens = max(beams, key=lambda item: item[1])[0] if beams else []
+    return best_tokens
+
 def greedy_decode(
     rknn_dec,
     attention_mask,
@@ -116,6 +172,7 @@ def translate_line(
     pad_token_id,
     eos_token_id,
     unk_token_id,
+    beam_search
 ):
     pieces = spm_src.encode(line, out_type=str)
     tokens = [vocab.get(piece, unk_token_id) for piece in pieces]
@@ -129,17 +186,33 @@ def translate_line(
     )
     encoder_hidden_states = encoder_outputs[0]
 
-    output_tokens = greedy_decode(
-        rknn_dec,
-        attention_mask,
-        encoder_hidden_states,
-        lm_weight,
-        lm_bias,
-        decoder_start_token_id,
-        pad_token_id,
-        eos_token_id,
-        dec_len,
-    )
+    if beam_search is None:
+        output_tokens = greedy_decode(
+            rknn_dec,
+            attention_mask,
+            encoder_hidden_states,
+            lm_weight,
+            lm_bias,
+            decoder_start_token_id,
+            pad_token_id,
+            eos_token_id,
+            dec_len,
+        )
+    else:
+        beam_width, beam_depth = beam_search
+        output_tokens = beam_search_decode(
+            rknn_dec,
+            attention_mask,
+            encoder_hidden_states,
+            lm_weight,
+            lm_bias,
+            decoder_start_token_id,
+            pad_token_id,
+            eos_token_id,
+            dec_len,
+            beam_width,
+            beam_depth
+        )
 
     decoded_pieces = []
     for token_id in output_tokens:
@@ -151,14 +224,19 @@ def translate_line(
 
     return spm_tgt.decode(decoded_pieces)
 
-def inference(rknn_enc, rknn_dec, lm_weight, lm_bias, input_path, enc_len, dec_len, lines=None):
+def inference(rknn_enc, rknn_dec, lm_weight, lm_bias, input_path, enc_len, dec_len, beam_search=None, lines=None):
     config = load_config(f"{input_path}/config.json")
+    d_model = config.get("d_model", 0)
+    if d_model != MODEL_DIM:
+        raise ValueError(f"Model dimension mismatch: expected {MODEL_DIM}, got {d_model}")
+
     decoder_start_token_id = config.get("decoder_start_token_id", 59513)
     pad_token_id = config.get("pad_token_id", decoder_start_token_id)
     eos_token_id = config.get("eos_token_id", 0)
     unk_token_id = config.get("unk_token_id", 0)
 
     vocab, vocab_inv = load_vocab(f"{input_path}/vocab.json")
+
     spm_src = spm.SentencePieceProcessor(model_file=f"{input_path}/source.spm")
     spm_tgt = spm.SentencePieceProcessor(model_file=f"{input_path}/target.spm")
 
@@ -179,6 +257,7 @@ def inference(rknn_enc, rknn_dec, lm_weight, lm_bias, input_path, enc_len, dec_l
             pad_token_id,
             eos_token_id,
             unk_token_id,
+            beam_search
         )
 
     if lines is not None:
@@ -198,6 +277,9 @@ def inference(rknn_enc, rknn_dec, lm_weight, lm_bias, input_path, enc_len, dec_l
 def parse_args():
     parser = argparse.ArgumentParser(description="Run RKNN Marian translation.")
     parser.add_argument("model_path", help="Path to the directory containing the model files.")
+    parser.add_argument("--beam-search", action="store_true", help="Use beam search decoding instead of greedy decoding.")
+    parser.add_argument("--beam-depth", type=int, default=None, help="Maximum decoding depth for beam search.")
+    parser.add_argument("--beam-width", type=int, default=4, help="Beam width for beam search decoding.")
     parser.add_argument(
         "inputs",
         nargs="*",
@@ -207,11 +289,20 @@ def parse_args():
 
 def main():
     args = parse_args()
+
+    # vocab
     vocab, _ = load_vocab(f"{args.model_path}/vocab.json")
+
+    # lm head
     lm_weight, lm_bias = load_lm_weights(args.model_path, len(vocab))
 
+    # models
     rknn_enc = load_rknn_model(f"{args.model_path}/encoder.rknn")
     rknn_dec = load_rknn_model(f"{args.model_path}/decoder.rknn")
+
+    # optionals
+    beam_search = (args.beam_width, args.beam_depth) if args.beam_search else None
+    lines = args.inputs if args.inputs else None
 
     try:
         inference(
@@ -222,7 +313,8 @@ def main():
             args.model_path,
             ENC_LEN,
             DEC_LEN,
-            lines=args.inputs if args.inputs else None,
+            beam_search,
+            lines
         )
     finally:
         rknn_enc.release()
