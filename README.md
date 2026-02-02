@@ -13,12 +13,15 @@ This repo contains an implementation of MarianMT that runs on Rockchip NPU (RKNN
   * [Prerequisites](#prerequisites)
   * [Docker (CPU-only preflight)](#docker-cpu-only-preflight)
   * [Docker Compose](#docker-compose)
-* [Hugging Face](#hugging-face)
-  * [Available Models](#available-models)
 * [Conversion](#conversion)
   * [Get Model Path](#get-model-path)
   * [Export to ONNX](#export-to-onnx)
   * [ONNX to RKNN](#onnx-to-rknn)
+* [Inference](#inference)
+  * [Dependencies](#dependencies)
+  * [Model Output](#model-output)
+  * [Show Time!](#show-time)
+  * [Beam Search](#beam-search)
 * [Native Implementation](#native-implementation)
   * [Cross-Compilation](#cross-compilation)
   * [Release Builds](#release-builds)
@@ -107,17 +110,13 @@ For an even easier time, you can use Docker Compose:
 docker compose run --build python
 ```
 
-This will automatically run the preflight script, and drop you into the interactive transalator.
+This will automatically run the preflight script, and drop you into the interactive translator.
 
 The same Docker Compose command can be used to run arbitrary scripts inside the container, or even just to load a bash shell:
 
 ```bash
 docker compose run --build python /bin/bash
 ```
-
-## Hugging Face
-
-Hugging Face hosts the official MarianMT checkpoints, tokenizers, and configuration files that seed the RKNN conversion workflow. We can use the `transformers` library to simplify downloading these artifacts, ensuring that the encoder, decoder, and vocabulary files remain synchronized across languages.
 
 ## Conversion
 
@@ -169,17 +168,11 @@ While converting / exporting, the output will look like this:
 Exporting encoder to ONNX...
 Exporting decoder to ONNX...
 Verifying export...
-
-Not equal to tolerance rtol=0.001, atol=0.001
-
-(shapes (1, 6), (1, 5) mismatch)
- x: array([[59513,  8703,    19,   507,   291,     0]])
- y: array([[59513,  8703,   507,   291,     0]])
+Model outputs from torch and ONNX Runtime are similar.
+Success.
 Creating archive file...
 Done.
 ```
-
-We don't need to worry too much about the shape mismatch. This tells us that the output from the original and converted models differ slightly, which is sometimes caused by difference in tokenizers.
 
 The ONNX-format encoder/decoder will be written to `outs/<model-name>`:
 
@@ -201,7 +194,7 @@ In the next step, we will convert `decoder.onnx`, `encoder.onnx`, `lm_bias.bin` 
 
 ### Verify ONNX
 
-Before proceeding any further, it's also a good idea to verify that the ONNX models work correctly:
+Before proceeding any further, we should verify that the ONNX models work correctly:
 
 ```bash
 python Marian-ONNX-Converter/test.py \
@@ -229,55 +222,188 @@ python scripts/convert.py \
 
 This will look for `encoder.onnx` and `decoder.onnx` in the specified directory, and convert them to `encoder.rknn` and `decoder.rknn` respectively.
 
-The output may be a little noisy:
+Don't be alarmed that the output is a little noisy. The conversion process should look something like this:
 
 ```
-Converting encoder!
+Converting encoder...
 I rknn-toolkit2 version: 2.3.2
 --> Config model
-W config: Please make sure the model can be dynamic when enable 'config.dynamic_input'!
-I The 'dynamic_input' function has been enabled, the MaxShape is dynamic_input[0] = [[1, 32], [1, 32]]!
-          The following functions are subject to the MaxShape:
-            1. The quantified dataset needs to be configured according to MaxShape
-            2. The eval_perf or eval_memory return the results of MaxShape
 done
 --> Loading model
 W load_onnx: If you don't need to crop the model, don't set 'inputs'/'input_size_list'/'outputs'!
-I Loading : 100%|█████████████████████████████████████████████████| 98/98 [00:00<00:00, 6059.17it/s]
+I Loading : 100%|██████████████████████████████████████████████████| 98/98 [00:00<00:00, 788.63it/s]
 done
 --> Building model
-...
+W build: For tensor ['/encoder/Constant_14_output_0'], the value smaller than -3e+38 or greater than 3e+38 has been corrected to -10000 or 10000. Set opt_level to 2 or lower to disable this correction.
+I OpFusing 0 : 100%|██████████████████████████████████████████████| 100/100 [00:00<00:00, 386.07it/s]
+I OpFusing 1 : 100%|██████████████████████████████████████████████| 100/100 [00:00<00:00, 157.24it/s]
+I OpFusing 0 : 100%|██████████████████████████████████████████████| 100/100 [00:01<00:00, 77.62it/s]
+I OpFusing 1 : 100%|██████████████████████████████████████████████| 100/100 [00:01<00:00, 75.28it/s]
+I OpFusing 0 : 100%|██████████████████████████████████████████████| 100/100 [00:01<00:00, 73.08it/s]
+I OpFusing 1 : 100%|██████████████████████████████████████████████| 100/100 [00:01<00:00, 72.35it/s]
+I OpFusing 2 : 100%|██████████████████████████████████████████████| 100/100 [00:01<00:00, 70.86it/s]
+I OpFusing 0 : 100%|██████████████████████████████████████████████| 100/100 [00:01<00:00, 66.73it/s]
+I OpFusing 1 : 100%|██████████████████████████████████████████████| 100/100 [00:01<00:00, 65.93it/s]
+I OpFusing 2 : 100%|██████████████████████████████████████████████| 100/100 [00:01<00:00, 59.69it/s]
 I rknn building ...
-E RKNN: [07:55:26.585] Unkown op target: 0
-E RKNN: [07:55:26.585] Unkown op target: 0
+E RKNN: [08:30:31.518] Unkown op target: 0
+E RKNN: [08:30:31.518] Unkown op target: 0
 I rknn building done.
 done
 --> Export rknn model
 done
-Converting decoder!
+Converting decoder...
 I rknn-toolkit2 version: 2.3.2
 --> Config model
-W config: Please make sure the model can be dynamic when enable 'config.dynamic_input'!
-I The 'dynamic_input' function has been enabled, the MaxShape is dynamic_input[0] = [[1, 32], [1, 32], [1, 32, 512]]!
-          The following functions are subject to the MaxShape:
-            1. The quantified dataset needs to be configured according to MaxShape
-            2. The eval_perf or eval_memory return the results of MaxShape
 done
 --> Loading model
 W load_onnx: If you don't need to crop the model, don't set 'inputs'/'input_size_list'/'outputs'!
-I Loading : 100%|███████████████████████████████████████████████| 158/158 [00:00<00:00, 8614.77it/s]
+I Loading : 100%|███████████████████████████████████████████████| 158/158 [00:00<00:00, 1221.60it/s]
 W load_onnx: The config.mean_values is None, zeros will be set for input 2!
 W load_onnx: The config.std_values is None, ones will be set for input 2!
 done
 --> Building model
-...
+W build: For tensor ['/decoder/Constant_36_output_0'], the value smaller than -3e+38 or greater than 3e+38 has been corrected to -10000 or 10000. Set opt_level to 2 or lower to disable this correction.
+W build: For tensor ['/decoder/Expand_output_0'], the value smaller than -3e+38 or greater than 3e+38 has been corrected to -10000 or 10000. Set opt_level to 2 or lower to disable this correction.
+W build: For tensor ['/decoder/Expand_output_0_1'], the value smaller than -3e+38 or greater than 3e+38 has been corrected to -10000 or 10000. Set opt_level to 2 or lower to disable this correction.
+W build: For tensor ['/decoder/Expand_output_0_2'], the value smaller than -3e+38 or greater than 3e+38 has been corrected to -10000 or 10000. Set opt_level to 2 or lower to disable this correction.
+W build: For tensor ['/decoder/Expand_output_0_3'], the value smaller than -3e+38 or greater than 3e+38 has been corrected to -10000 or 10000. Set opt_level to 2 or lower to disable this correction.
+W build: For tensor ['/decoder/Expand_output_0_4'], the value smaller than -3e+38 or greater than 3e+38 has been corrected to -10000 or 10000. Set opt_level to 2 or lower to disable this correction.
+W build: For tensor ['/decoder/Expand_output_0_5'], the value smaller than -3e+38 or greater than 3e+38 has been corrected to -10000 or 10000. Set opt_level to 2 or lower to disable this correction.
+I OpFusing 0 : 100%|██████████████████████████████████████████████| 100/100 [00:00<00:00, 286.03it/s]
+I OpFusing 1 : 100%|██████████████████████████████████████████████| 100/100 [00:01<00:00, 92.72it/s]
+I OpFusing 0 : 100%|██████████████████████████████████████████████| 100/100 [00:02<00:00, 42.73it/s]
+I OpFusing 1 : 100%|██████████████████████████████████████████████| 100/100 [00:02<00:00, 41.58it/s]
+I OpFusing 0 : 100%|██████████████████████████████████████████████| 100/100 [00:02<00:00, 40.47it/s]
+I OpFusing 1 : 100%|██████████████████████████████████████████████| 100/100 [00:02<00:00, 40.13it/s]
+I OpFusing 2 : 100%|██████████████████████████████████████████████| 100/100 [00:02<00:00, 39.36it/s]
+I OpFusing 0 : 100%|██████████████████████████████████████████████| 100/100 [00:02<00:00, 37.25it/s]
+I OpFusing 1 : 100%|██████████████████████████████████████████████| 100/100 [00:02<00:00, 36.86it/s]
+I OpFusing 2 : 100%|██████████████████████████████████████████████| 100/100 [00:02<00:00, 33.90it/s]
 I rknn building ...
-E RKNN: [07:55:31.972] Unkown op target: 0
-E RKNN: [07:55:31.972] Unkown op target: 0
+E RKNN: [08:30:41.713] Unkown op target: 0
+E RKNN: [08:30:41.713] Unkown op target: 0
 I rknn building done.
 done
 --> Export rknn model
 done
+Converting LM weights...
+Converting LM biases...
+```
+
+Once conversion is complete, a simulator will be started.
+
+```
+I Target is None, use simulator!
+I Target is None, use simulator!
+```
+
+This can be used to input individual strings to be translated:
+
+```
+Enter text to translate (empty line to quit):
+> I am a fish
+W inference: The 'data_format' is not set, and its default value is 'nhwc'!
+I GraphPreparing : 100%|████████████████████████████████████████| 145/145 [00:00<00:00, 6668.06it/s]
+I SessionPreparing : 100%|███████████████████████████████████████| 145/145 [00:00<00:00, 812.20it/s]
+W inference: The 'data_format' is not set, and its default value is 'nhwc'!
+I GraphPreparing : 100%|████████████████████████████████████████| 237/237 [00:00<00:00, 9004.81it/s]
+I SessionPreparing : 100%|███████████████████████████████████████| 237/237 [00:00<00:00, 990.41it/s]
+W inference: The 'data_format' is not set, and its default value is 'nhwc'!
+W inference: The 'data_format' is not set, and its default value is 'nhwc'!
+Je suis un poisson
+>
+```
+
+## Inference
+
+To run the model on your Rockchip device, you will need to install some dependencies and copy across the converted model files.
+
+### Dependencies
+
+It is recommended that you install Python dependencies in Python virtual environment. Start by creating the environment:
+
+```bash
+python3 -m venv venv
+```
+
+Then you can activate it like so:
+
+```bash
+source venv/bin/activate
+```
+
+Now you can install other packages using `pip`:
+
+```bash
+pip install -r requirements.lite.txt
+```
+
+The main dependency here is [RKNN Toolkit Lite](https://github.com/rockchip-linux/rknn-toolkit/tree/master/rknn-toolkit-lite), which is a trimmed down version of the RKNN Toolkit with individual device / NPU support added.
+
+### Model Outputs
+
+You will also need to copy the conversion output from earlier onto your device:
+
+```bash
+scp -r outs <edge2-ip>:~
+```
+
+### Show Time!
+
+You can now run the inference script:
+
+```bash
+python scripts/infer.py
+```
+
+When no arguments are provided, this script will simply print out usage information:
+
+```
+usage: infer.py [-h] [--beam-search] [--beam-depth BEAM_DEPTH] [--beam-width BEAM_WIDTH] model_path [inputs ...]
+infer.py: error: the following arguments are required: model_path, inputs
+```
+
+```bash
+python scripts/infer.py outs/dd7f6540a7a48a7f4db59e5c0b9c42c8eea67f18
+```
+
+While loading, the output should look something like this:
+
+```log
+W rknn-toolkit-lite2 version: 2.3.2
+I RKNN: [08:58:26.109] RKNN Runtime Information, librknnrt version: 2.3.2 (429f97ae6b@2025-04-09T09:09:27)
+I RKNN: [08:58:26.109] RKNN Driver Information, version: 0.9.8
+I RKNN: [08:58:26.109] RKNN Model Information, version: 6, toolkit version: 2.3.2(compiler version: 2.3.2 (e045de294f@2025-04-07T19:48:25)), target: RKNPU v2, target platform: rk3588, framework name: ONNX, framework layout: NCHW, model inference type: static_shape
+W RKNN: [08:58:26.240] query RKNN_QUERY_INPUT_DYNAMIC_RANGE error, rknn model is static shape type, please export rknn with dynamic_shapes
+W Query dynamic range failed. Ret code: RKNN_ERR_MODEL_INVALID. (If it is a static shape RKNN model, please ignore the above warning message.)
+W rknn-toolkit-lite2 version: 2.3.2
+I RKNN: [08:58:26.377] RKNN Runtime Information, librknnrt version: 2.3.2 (429f97ae6b@2025-04-09T09:09:27)
+I RKNN: [08:58:26.377] RKNN Driver Information, version: 0.9.8
+I RKNN: [08:58:26.378] RKNN Model Information, version: 6, toolkit version: 2.3.2(compiler version: 2.3.2 (e045de294f@2025-04-07T19:48:25)), target: RKNPU v2, target platform: rk3588, framework name: ONNX, framework layout: NCHW, model inference type: static_shape
+W RKNN: [08:58:26.527] query RKNN_QUERY_INPUT_DYNAMIC_RANGE error, rknn model is static shape type, please export rknn with dynamic_shapes
+W Query dynamic range failed. Ret code: RKNN_ERR_MODEL_INVALID. (If it is a static shape RKNN model, please ignore the above warning message.)
+Enter text to translate (empty line to quit):
+>
+```
+
+Don't worry about the warnings. The most important thing is that the final prompt is visible, and that translations behave as expected:
+
+```
+Enter text to translate (empty line to quit):
+> I am a fish
+Je suis un poisson
+>
+```
+
+### Beam Search
+
+The last thing worth mentioning is support for [Beam Search](https://en.wikipedia.org/wiki/Beam_search). The default behaviour of the inference script is to use Greedy Search, which simply consumes tokens as they are generated. Beam Search is an alternative that allows multiple paths to be explored iteratively. Although it can be a little slower, it can be lead to higher quality outputs.
+
+This can enabled using the `--beam-search` option. The beam depth and beam width can also be configured using command line arguments:
+
+```bash
+python scripts/infer.py --beam-search --beam-width 3 outs/dd7f6540a7a48a7f4db59e5c0b9c42c8eea67f18
 ```
 
 ## Native Implementation
@@ -288,13 +414,13 @@ A native RKNN implementation of Marian MT can be found in the [cpp](./cpp) direc
 
 Build and run the container using Docker Compose:
 
-```
+```bash
 docker compose run --build build /bin/bash
 ```
 
 Compile the project using CMake:
 
-```
+```bash
 mkdir -p cpp/build
 cd cpp/build
 cmake ..
@@ -303,7 +429,7 @@ make
 
 The `marian-rknn` executable can then be copied over to the target device, using `scp` or another file transfer utility. For example:
 
-```
+```bash
 scp marian-rknn <edge2-ip>:~
 ```
 
@@ -322,5 +448,7 @@ Alternatively, you can produce a `RelWithDebInfo` build. This will have `-O2` op
 ```bash
 cmake -DCMAKE_BUILD_TYPE=RelWithDebInfo ..
 ```
+
+## License
 
 This code is released under the Apache License 2.0 license. See the [LICENSE](./LICENSE) file for more information.
