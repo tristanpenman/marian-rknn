@@ -66,15 +66,108 @@ void rknn_marian_lm_head_t::operator()(const float* hidden, float* out_logits) c
     y += bias;
 }
 
-int rknn_nmt_process(
+static int greedy_decode(
+    rknn_marian_rknn_context_t* app_ctx,
+    int32_t* output_token)
+{
+    int ret = 0;
+
+    LOG(VERBOSE) << "Setup decoder input state";
+    std::vector<int32_t> decoder_input_ids(static_cast<size_t>(app_ctx->dec_len), 0);
+    decoder_input_ids[0] = app_ctx->decoder_start_token_id;
+    for (int i = 1; i < app_ctx->dec_len; i++) {
+        decoder_input_ids[i] = app_ctx->pad_token_id;
+    }
+
+    // output starts with pad token
+    for (int i = 0; i < app_ctx->dec_len; i++) {
+        output_token[i] = app_ctx->pad_token_id;
+    }
+
+    TIMER timer;
+    TIMER timer_total;
+    timer_total.tik();
+    for (int num_iter = 0; num_iter < app_ctx->dec_len - 1; num_iter++) {
+        LOG(VERBOSE) << "Decoder iteration " << num_iter;
+        memcpy(
+            app_ctx->dec.input_mem[DEC_IN_INPUT_IDS_IDX]->virt_addr,
+            decoder_input_ids.data(),
+            app_ctx->dec.in_attr[DEC_IN_INPUT_IDS_IDX].size
+        );
+
+        LOG(VERBOSE) << "rknn_run";
+        timer.tik();
+        ret = rknn_run(app_ctx->dec.ctx, nullptr);
+        timer.tok();
+        if (ret < 0) {
+            LOG(ERROR) << "rknn_run failed. ret=" << ret;
+            return -1;
+        }
+
+        LOG(VERBOSE) << "Convert fp16 to fp32";
+        half* ptr = (half*)(app_ctx->dec.output_mem[DEC_OUT_DECODER_OUTPUT]->virt_addr);
+        std::vector<float> output_floats(app_ctx->lm_head.D, 0);
+        for (int j = 0; j < app_ctx->lm_head.D; j++) {
+            output_floats[j] = half_to_float(ptr[app_ctx->lm_head.D * num_iter + j]);
+        }
+
+        LOG(VERBOSE) << "Apply LM head";
+        std::vector<float> logits;
+        logits.resize(app_ctx->lm_head.V);
+        app_ctx->lm_head(
+            output_floats.data(),
+            logits.data()
+        );
+
+        LOG(VERBOSE) << "Argmax:";
+        int max = 0;
+        float value = -INFINITY;
+        for (int i = 0; i < app_ctx->lm_head.V; i++) {
+            if (logits[i] > value) {
+                value = logits[i];
+                max = i;
+            }
+        }
+
+        LOG(VERBOSE) << max << " (" << value << ")";
+        output_token[num_iter] = max;
+
+        if (num_iter < app_ctx->dec_len - 1) {
+            decoder_input_ids[num_iter + 1] = max;
+        }
+
+        if (max == app_ctx->eos_token_id) {
+            break;
+        }
+    }
+    timer_total.tok();
+
+    int output_len = 0;
+    std::ostringstream output_stream;
+    output_stream << "Decoder output tokens:";
+    for (int i = 0; i < app_ctx->dec_len; i++) {
+        if (output_token[i] == app_ctx->eos_token_id || output_token[i] == app_ctx->pad_token_id) {
+            break;
+        }
+        output_stream << " " << output_token[i];
+        output_len++;
+    }
+    LOG(VERBOSE) << output_stream.str();
+
+    timer.print_time("RKNN decoder once run");
+
+    LOG(VERBOSE) << "Decoder run " << output_len - 1 << " times";
+    timer_total.print_time("Total time");
+
+    return output_len;
+}
+
+static int rknn_nmt_process(
     rknn_marian_rknn_context_t* app_ctx,
     int32_t* input_token,
     int32_t* output_token)
 {
     int ret = 0;
-
-    TIMER timer;
-    TIMER timer_total;
 
     // attention mask
     std::vector<int32_t> attention_mask(static_cast<size_t>(app_ctx->enc_len), 0);
@@ -135,7 +228,8 @@ int rknn_nmt_process(
         app_ctx->enc.in_attr[ENC_IN_ATTENTION_MASK_IDX].size
     );
 
-    // Run encoder
+    LOG(VERBOSE) << "Run encoder";
+    TIMER timer;
     timer.tik();
     ret = rknn_run(app_ctx->enc.ctx, nullptr);
     if (ret < 0) {
@@ -143,7 +237,7 @@ int rknn_nmt_process(
         return -1;
     }
     timer.tok();
-    timer.print_time("rknn encoder run");
+    timer.print_time("RKNN encoder run");
 
     LOG(VERBOSE) << "Copy output from encoder to decoder";
     memcpy(
@@ -159,95 +253,7 @@ int rknn_nmt_process(
         app_ctx->dec.in_attr[DEC_IN_ATTENTION_MASK_IDX].size
     );
 
-    LOG(VERBOSE) << "Setup decoder input state";
-    std::vector<int32_t> decoder_input_ids(static_cast<size_t>(app_ctx->dec_len), 0);
-
-    // decoder start token ID
-    decoder_input_ids[0] = app_ctx->decoder_start_token_id;
-    for (int i = 1; i < app_ctx->dec_len; i++) {
-        decoder_input_ids[i] = app_ctx->pad_token_id;
-    }
-
-    // output starts with pad token
-    for (int i = 0; i < app_ctx->dec_len; i++) {
-        output_token[i] = app_ctx->pad_token_id;
-    }
-
-    timer_total.tik();
-    for (int num_iter = 0; num_iter < app_ctx->dec_len - 1; num_iter++) {
-        LOG(VERBOSE) << "Decoder iteration " << num_iter;
-        memcpy(
-            app_ctx->dec.input_mem[DEC_IN_INPUT_IDS_IDX]->virt_addr,
-            decoder_input_ids.data(),
-            app_ctx->dec.in_attr[DEC_IN_INPUT_IDS_IDX].size
-        );
-
-        LOG(VERBOSE) << "rknn_run";
-        timer.tik();
-        ret = rknn_run(app_ctx->dec.ctx, nullptr);
-        timer.tok();
-        if (ret < 0) {
-            LOG(ERROR) << "rknn_run failed. ret=" << ret;
-            return -1;
-        }
-
-        LOG(VERBOSE) << "Convert fp16 to fp32";
-        half* ptr = (half*)(app_ctx->dec.output_mem[DEC_OUT_DECODER_OUTPUT]->virt_addr);
-        std::vector<float> output_floats(app_ctx->lm_head.D, 0);
-        for (int j = 0; j < app_ctx->lm_head.D; j++) {
-            output_floats[j] = half_to_float(ptr[app_ctx->lm_head.D * num_iter + j]);
-        }
-
-        LOG(VERBOSE) << "Apply LM head";
-        std::vector<float> logits;
-        logits.resize(app_ctx->lm_head.V);
-        app_ctx->lm_head(
-            output_floats.data(),
-            logits.data()
-        );
-
-        LOG(VERBOSE) << "Argmax:";
-        int max = 0;
-        float value = -INFINITY;
-        for (int i = 0; i < app_ctx->lm_head.V; i++) {
-            if (logits[i] > value) {
-                value = logits[i];
-                max = i;
-            }
-        }
-
-        LOG(VERBOSE) << max << " (" << value << ")";
-
-        output_token[num_iter] = max;
-
-        if (num_iter < app_ctx->dec_len - 1) {
-            decoder_input_ids[num_iter + 1] = max;
-        }
-
-        if (max == app_ctx->eos_token_id) {
-            break;
-        }
-    }
-    timer_total.tok();
-
-    int output_len=0;
-    std::ostringstream output_stream;
-    output_stream << "Decoder output tokens:";
-    for (int i = 0; i < app_ctx->dec_len; i++) {
-        if (output_token[i] == app_ctx->eos_token_id || output_token[i] == app_ctx->pad_token_id) {
-            break;
-        }
-        output_stream << " " << output_token[i];
-        output_len++;
-    }
-    LOG(VERBOSE) << output_stream.str();
-
-    timer.print_time("RKNN decoder once run");
-
-    LOG(VERBOSE) << "Decoder run " << output_len - 1 << " times";
-    timer_total.print_time("Total time");
-
-    return output_len;
+    return greedy_decode(app_ctx, output_token);
 }
 
 int init_marian_rknn_model(
