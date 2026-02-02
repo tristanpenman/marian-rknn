@@ -16,13 +16,12 @@ DECODER_INPUT_SIZE_LIST = [[1, DEC_LEN], [1, DEC_LEN], [1, DEC_LEN, MODEL_DIM]]
 ENCODER_INPUTS = ['input_ids', 'attention_mask']
 ENCODER_INPUT_SIZE_LIST = [[1, ENC_LEN], [1, ENC_LEN]]
 
-ENABLE_DYNAMIC_INPUTS = False
-
 def parse_arg():
     parser = argparse.ArgumentParser(
         description="Convert Marian ONNX models to RKNN.",
     )
     parser.add_argument("input_path", help="Path to the directory containing the ONNX files.")
+    parser.add_argument("--dynamic-input", action="store_true", default=False, help="Export model using dynamic inputs (default=off).")
     parser.add_argument(
         "platform",
         choices=[
@@ -55,13 +54,13 @@ def parse_arg():
     do_quant = DEFAULT_QUANT
     output_path = args.output_path or args.input_path
 
-    return args.input_path, args.platform, do_quant, output_path
+    return args.input_path, args.platform, do_quant, output_path, args.dynamic_input
 
-def convert_model(model_path, platform, do_quant, output_path, inputs, input_size_list):
+def convert_model(model_path, platform, do_quant, dynamic_input, output_path, inputs, input_size_list):
     rknn = RKNN(verbose=False)
 
     print('--> Config model')
-    if ENABLE_DYNAMIC_INPUTS:
+    if dynamic_input:
         # Warning: This is disabled by default, as the C++ rknn_api fails with
         # std::out_of_range exceptions when loading models with `dynamic_input`
         rknn.config(target_platform=platform, dynamic_input=[input_size_list])
@@ -107,14 +106,14 @@ def convert_weights(input_path, output_path):
 
 
 def main():
-    input_path, platform, do_quant, output_path = parse_arg()
+    input_path, platform, do_quant, output_path, dynamic_input = parse_arg()
 
     print('Converting encoder...')
-    rknn_enc = convert_model(f"{input_path}/encoder.onnx", platform, do_quant,
+    rknn_enc = convert_model(f"{input_path}/encoder.onnx", platform, do_quant, dynamic_input,
                              f"{output_path}/encoder.rknn", ENCODER_INPUTS, ENCODER_INPUT_SIZE_LIST)
 
     print('Converting decoder...')
-    rknn_dec = convert_model(f"{input_path}/decoder.onnx", platform, do_quant,
+    rknn_dec = convert_model(f"{input_path}/decoder.onnx", platform, do_quant, dynamic_input,
                              f"{output_path}/decoder.rknn", DECODER_INPUTS, DECODER_INPUT_SIZE_LIST)
 
     print('Converting LM weights...')
