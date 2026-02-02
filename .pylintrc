@@ -10,6 +10,7 @@ disable=
     consider-using-f-string,
     consider-using-sys-exit,
     duplicate-code,
+    import-outside-toplevel,
     line-too-long,
     missing-docstring,
     missing-module-docstring,

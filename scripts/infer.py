@@ -28,7 +28,9 @@ def load_vocab(vocab_path):
     return vocab, vocab_inv
 
 def load_rknn_model(model_path):
+    # pylint: disable-next=import-error
     from rknnlite.api import RKNNLite
+
     rknn = RKNNLite()
     ret = rknn.load_rknn(model_path)
     if ret != 0:
