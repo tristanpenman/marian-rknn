@@ -60,15 +60,14 @@ struct rknn_marian_rknn_context_t
     int pad_token_id;
     int unk_token_id;
 
-    // other constants
+    // other constraints
     size_t enc_len;
     size_t dec_len;
 };
 
 int init_marian_rknn_model(
-    const char* model_dir,
-    bool verbose,
-    rknn_marian_rknn_context_t* app_ctx);
+    const char *model_dir,
+    rknn_marian_rknn_context_t *app_ctx);
 
 int release_marian_rknn_model(
     rknn_marian_rknn_context_t* app_ctx);

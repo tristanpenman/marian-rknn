@@ -43,7 +43,7 @@ int read_user_input(char* buffer)
     return 0;
 }
 
-int main(int argc, char **argv)
+int main(const int argc, char **argv)
 {
     bool verbose = false;
     std::vector<const char*> positional_args;
@@ -59,9 +59,8 @@ int main(int argc, char **argv)
     Logger::configure(std::cout, verbose ? Logger::Level::Verbose : Logger::Level::Info);
     LOG(INFO) << "Marian RKNN Translator Demo";
 
-    if (positional_args.size() < 1) {
-        LOG(ERROR) << "Usage: " << argv[0]
-                   << " [-v|--verbose] <model_dir> <sentence ...>";
+    if (positional_args.empty()) {
+        LOG(ERROR) << "Usage: " << argv[0] << " [-v|--verbose] <model_dir> <sentence ...>";
         return -1;
     }
 
@@ -71,12 +70,12 @@ int main(int argc, char **argv)
 
     rknn_marian_rknn_context_t rknn_app_ctx;
 
-    char *input_strings = (char *)malloc(MAX_USER_INPUT_LEN);
-    char *output_strings = (char *)malloc(MAX_USER_INPUT_LEN);
+    const auto input_strings = static_cast<char *>(malloc(MAX_USER_INPUT_LEN));
+    const auto output_strings = static_cast<char *>(malloc(MAX_USER_INPUT_LEN));
     memset(input_strings, 0, MAX_USER_INPUT_LEN);
     memset(output_strings, 0, MAX_USER_INPUT_LEN);
 
-    int ret = init_marian_rknn_model(model_dir, verbose, &rknn_app_ctx);
+    int ret = init_marian_rknn_model(model_dir, &rknn_app_ctx);
     if (ret != 0) {
         LOG(ERROR) << "init_marian_rknn_model failed";
         goto out;
@@ -93,11 +92,10 @@ int main(int argc, char **argv)
         LOG(INFO) << "Read input from cmd line: " << input_strings;
     }
 
-    while (1) {
+    while (true) {
         if (is_receipt == false) {
             memset(input_strings, 0, MAX_USER_INPUT_LEN);
-            int num_word = read_user_input(input_strings);
-            if (num_word == -1) {
+            if (const int num_word = read_user_input(input_strings); num_word == -1) {
                 break;
             }
         }

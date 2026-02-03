@@ -24,7 +24,7 @@
 #include <nlohmann/json.hpp>
 #include <sentencepiece_processor.h>
 
-// thirdparty
+// third-party
 #include "rknn_api.h"
 
 // internal
@@ -54,25 +54,28 @@ using json = nlohmann::json;
 
 void rknn_marian_lm_head_t::operator()(const float* hidden, float* out_logits) const
 {
-    using RowMat = Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::ColMajor>;
+    // map inputs
+    const Eigen::Map<const Eigen::Matrix<float, 1, Eigen::Dynamic>> h(hidden, D);
+    const Eigen::Map<const Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic>> W(Wt, D, V);
+    const Eigen::Map<const Eigen::Matrix<float, 1, Eigen::Dynamic>> bias(b, V);
 
-    Eigen::Map<const Eigen::Matrix<float, 1, Eigen::Dynamic, Eigen::RowMajor>> h(hidden, D);
-    Eigen::Map<const RowMat> W(Wt, D, V);
-    Eigen::Map<Eigen::Matrix<float, 1, Eigen::Dynamic, Eigen::RowMajor>> y(out_logits, V);
-    Eigen::Map<const Eigen::Matrix<float, 1, Eigen::Dynamic, Eigen::RowMajor>> bias(b, V);
-
+    // calculate result
+    Eigen::Map<Eigen::Matrix<float, 1, Eigen::Dynamic>> y(out_logits, V);
     y.noalias() = h * W;
     y += bias;
 }
 
-static int greedy_decode(
+namespace {
+
+int greedy_decode(
     rknn_marian_rknn_context_t* app_ctx,
     int32_t* output_token)
 {
     int ret = 0;
 
     LOG(VERBOSE) << "Setup decoder input state";
-    std::vector<int32_t> decoder_input_ids(static_cast<size_t>(app_ctx->dec_len), 0);
+    std::vector<int32_t> decoder_input_ids;
+    decoder_input_ids.resize(app_ctx->dec_len, 0);
     decoder_input_ids[0] = app_ctx->decoder_start_token_id;
     for (int i = 1; i < app_ctx->dec_len; i++) {
         decoder_input_ids[i] = app_ctx->pad_token_id;
@@ -104,7 +107,7 @@ static int greedy_decode(
         }
 
         LOG(VERBOSE) << "Convert fp16 to fp32";
-        half* ptr = (half*)(app_ctx->dec.output_mem[DEC_OUT_DECODER_OUTPUT]->virt_addr);
+        auto ptr = static_cast<half *>(app_ctx->dec.output_mem[DEC_OUT_DECODER_OUTPUT]->virt_addr);
         std::vector<float> output_floats(app_ctx->lm_head.D, 0);
         for (int j = 0; j < app_ctx->lm_head.D; j++) {
             output_floats[j] = half_to_float(ptr[app_ctx->lm_head.D * num_iter + j]);
@@ -161,7 +164,7 @@ static int greedy_decode(
     return output_len;
 }
 
-static int rknn_nmt_process(
+int rknn_nmt_process(
     rknn_marian_rknn_context_t* app_ctx,
     const int32_t* input_token,
     int32_t* output_token)
@@ -257,10 +260,65 @@ static int rknn_nmt_process(
     return greedy_decode(app_ctx, output_token);
 }
 
-int init_marian_rknn_model(
-    const char* model_dir,
-    bool verbose,
-    rknn_marian_rknn_context_t* app_ctx)
+int get_sequence_length(const rknn_tensor_attr& attr, const char* label)
+{
+    if (attr.n_dims < 2) {
+        LOG(ERROR) << label << " has insufficient dims: " << attr.n_dims;
+        return -1;
+    }
+    return static_cast<int>(attr.dims[1]);
+}
+
+bool validate_equal_length(const size_t lhs, const size_t rhs, const char* lhs_label, const char* rhs_label)
+{
+    if (lhs != rhs) {
+        LOG(ERROR) << lhs_label << " length (" << lhs << ") does not match "
+                   << rhs_label << " length (" << rhs << ")";
+        return false;
+    }
+    return true;
+}
+
+int validate_sequence_lengths(const rknn_marian_rknn_context_t* app_ctx)
+{
+    const int enc_mask_len = get_sequence_length(app_ctx->enc.in_attr[ENC_IN_ATTENTION_MASK_IDX], "encoder attention_mask");
+    LOG(VERBOSE) << "Encoder mask len: " << enc_mask_len;
+    if (!validate_equal_length(app_ctx->enc_len, enc_mask_len, "encoder input_ids", "encoder attention_mask")) {
+        return -1;
+    }
+
+    const int dec_mask_len = get_sequence_length(app_ctx->dec.in_attr[DEC_IN_ATTENTION_MASK_IDX], "decoder attention_mask");
+    LOG(VERBOSE) << "Decoder mask len: " << dec_mask_len;
+    if (!validate_equal_length(app_ctx->dec_len, dec_mask_len, "decoder input_ids", "decoder attention_mask")) {
+        return -1;
+    }
+
+    int dec_hidden_len = get_sequence_length(app_ctx->dec.in_attr[DEC_IN_ENCODER_HIDDEN_STATES], "decoder encoder_hidden_states");
+    LOG(VERBOSE) << "Decoder hidden len: " << dec_hidden_len;
+    if (dec_hidden_len <= 0) {
+        return -1;
+    }
+
+    if (!validate_equal_length(dec_hidden_len, app_ctx->enc_len, "decoder encoder_hidden_states", "encoder input_ids")) {
+        return -1;
+    }
+
+    if (app_ctx->dec.in_attr[DEC_IN_ENCODER_HIDDEN_STATES].n_dims >= 3) {
+        const size_t dec_hidden_dim = app_ctx->dec.in_attr[DEC_IN_ENCODER_HIDDEN_STATES].dims[2];
+        LOG(VERBOSE) << "Decoder hidden dim: " << dec_hidden_dim;
+        if (dec_hidden_dim != app_ctx->lm_head.D) {
+            LOG(ERROR) << "decoder encoder_hidden_states dim (" << dec_hidden_dim
+                       << ") does not match d_model (" << app_ctx->lm_head.D << ")";
+            return -1;
+        }
+    }
+
+    return 0;
+}
+
+}  // namespace
+
+int init_marian_rknn_model(const char *model_dir, rknn_marian_rknn_context_t *app_ctx)
 {
     int ret = 0;
 
@@ -273,7 +331,7 @@ int init_marian_rknn_model(
     std::string lm_weight_path = join_path(model_dir, "lm_weight.raw");
     std::string lm_bias_path = join_path(model_dir, "lm_bias.raw");
 
-    LOG(INFO) << "load config " << config_path;
+    LOG(INFO) << "Load config " << config_path;
     std::ifstream config_file(config_path);
     if (!config_file) {
         LOG(ERROR) << "Failed to open config file: " << config_path;
@@ -286,20 +344,21 @@ int init_marian_rknn_model(
         return -1;
     }
 
-    int d_model = config.value("d_model", 0);
-    int vocab_size = config.value("vocab_size", 0);
-    if (d_model <= 0 || vocab_size <= 0) {
-        LOG(ERROR) << "Config missing required fields: d_model=" << d_model << " vocab_size=" << vocab_size;
+    app_ctx->lm_head.D = config.value("d_model", 0);
+    app_ctx->lm_head.V = config.value("vocab_size", 0);
+    if (app_ctx->lm_head.D <= 0 || app_ctx->lm_head.V <= 0) {
+        LOG(ERROR) << "Config missing required fields: d_model=" << app_ctx->lm_head.D << " vocab_size=" << app_ctx->lm_head.V;
         return -1;
     }
+
     app_ctx->decoder_start_token_id = config.value("decoder_start_token_id", 59513);
     app_ctx->pad_token_id = config.value("pad_token_id", app_ctx->decoder_start_token_id);
     app_ctx->eos_token_id = config.value("eos_token_id", 0);
     app_ctx->bos_token_id = config.value("bos_token_id", 0);
     app_ctx->unk_token_id = config.value("unk_token_id", 0);
 
-    LOG(VERBOSE) << "d_model: " << d_model;
-    LOG(VERBOSE) << "vocab size: " << vocab_size;
+    LOG(VERBOSE) << "d_model: " << app_ctx->lm_head.D;
+    LOG(VERBOSE) << "vocab_size: " << app_ctx->lm_head.V;
     LOG(VERBOSE) << "decoder start token id: " << app_ctx->decoder_start_token_id;
     LOG(VERBOSE) << "pad token id: " << app_ctx->pad_token_id;
     LOG(VERBOSE) << "eos token id: " << app_ctx->eos_token_id;
@@ -322,11 +381,15 @@ int init_marian_rknn_model(
         return -1;
     }
 
-    app_ctx->enc_len = app_ctx->enc.in_attr[ENC_IN_INPUT_IDS_IDX].dims[1];
+    app_ctx->enc_len = get_sequence_length(app_ctx->enc.in_attr[ENC_IN_INPUT_IDS_IDX], "encoder input_ids");
     LOG(INFO) << "Encoder length: " << app_ctx->enc_len;
 
-    app_ctx->dec_len = app_ctx->dec.in_attr[DEC_IN_INPUT_IDS_IDX].dims[1];
+    app_ctx->dec_len = get_sequence_length(app_ctx->dec.in_attr[DEC_IN_INPUT_IDS_IDX], "decoder input_ids");
     LOG(INFO) << "Decoder length: " << app_ctx->dec_len;
+
+    if (validate_sequence_lengths(app_ctx) != 0) {
+        return -1;
+    }
 
     LOG(VERBOSE) << "Init encoder buffers";
     ret = rknn_utils_init_input_buffer_all(&app_ctx->enc, ZERO_COPY_API);
@@ -400,28 +463,26 @@ int init_marian_rknn_model(
         }
     }
 
-    LOG(INFO) << "loading source spm";
-    auto src_status = app_ctx->spm_src.Load(source_spm_path);
-    if (!src_status.ok()) {
+    LOG(INFO) << "Loading source spm";
+    if (auto src_status = app_ctx->spm_src.Load(source_spm_path); !src_status.ok()) {
         LOG(ERROR) << "Failed to load source sentencepiece model: " << src_status.ToString();
         return -1;
     }
 
     auto ps = app_ctx->spm_src.GetPieceSize();
-    LOG(VERBOSE) << "source piece size: " << ps;
+    LOG(VERBOSE) << "Source pieces: " << ps;
 
-    LOG(INFO) << "loading target spm";
-    auto tgt_status = app_ctx->spm_tgt.Load(target_spm_path);
-    if (!tgt_status.ok()) {
+    LOG(INFO) << "Loading target spm";
+    if (auto tgt_status = app_ctx->spm_tgt.Load(target_spm_path); !tgt_status.ok()) {
         LOG(ERROR) << "Failed to load target sentencepiece model: " << tgt_status.ToString();
         return -1;
     }
 
     ps = app_ctx->spm_tgt.GetPieceSize();
-    LOG(VERBOSE) << "Target piece size: " << ps;
+    LOG(VERBOSE) << "Target pieces: " << ps;
 
-    int D = app_ctx->lm_head.D = d_model;
-    int V = app_ctx->lm_head.V = vocab_size;
+    const int D = app_ctx->lm_head.D;
+    const int V = app_ctx->lm_head.V;
 
     LOG(INFO) << "Load LM weight";
     app_ctx->lm_head.Wt = static_cast<float *>(malloc(sizeof(float) * V * D));
@@ -436,14 +497,13 @@ int init_marian_rknn_model(
 
     LOG(VERBOSE) << "Invert vocab";
     app_ctx->vocab_inv.reserve(app_ctx->vocab.size());
-    for (const auto& entry : app_ctx->vocab) {
-        auto existing = app_ctx->vocab_inv.find(entry.second);
-        if (existing != app_ctx->vocab_inv.end()) {
-            LOG(ERROR) << "Vocab is not unique. Duplicate found on ID: " << entry.second;
+    for (const auto&[fst, snd] : app_ctx->vocab) {
+        if (auto existing = app_ctx->vocab_inv.find(snd); existing != app_ctx->vocab_inv.end()) {
+            LOG(ERROR) << "Vocab is not unique. Duplicate found on ID: " << snd;
             return -1;
         }
 
-        app_ctx->vocab_inv.emplace(entry.second, entry.first);
+        app_ctx->vocab_inv.emplace(snd, fst);
     }
 
     return 0;
@@ -494,9 +554,8 @@ int inference_marian_rknn_model(
 
     // copy and truncate tokens
     token_list_len = encoded_tokens.size();
-    if (token_list_len > (int)(sizeof(token_list) / sizeof(int))) {
-        LOG(WARNING) << "Too many tokens (" << token_list_len << "), truncating to "
-                     << sizeof(token_list) / sizeof(int);
+    if (token_list_len > sizeof(token_list) / sizeof(int)) {
+        LOG(WARNING) << "Too many tokens (" << token_list_len << "), truncating to " << sizeof(token_list) / sizeof(int);
         token_list_len = sizeof(token_list) / sizeof(int);
     }
     for (int i = 0; i < token_list_len; ++i) {
@@ -504,8 +563,7 @@ int inference_marian_rknn_model(
     }
 
     // check input length
-    uint32_t max_input_len = app_ctx->enc_len;
-    if (token_list_len > max_input_len) {
+    if (uint32_t max_input_len = app_ctx->enc_len; token_list_len > max_input_len) {
         LOG(WARNING) << "token_len(" << token_list_len << ") > max_input_len(" << max_input_len
                      << "), only keep " << max_input_len << " tokens!";
         std::ostringstream tokens_all;
@@ -536,8 +594,7 @@ int inference_marian_rknn_model(
         if (output_token[i] == app_ctx->eos_token_id || output_token[i] == app_ctx->pad_token_id || output_token[i] <= 0) {
             break;
         }
-        auto entry = app_ctx->vocab_inv.find(output_token[i]);
-        if (entry == app_ctx->vocab_inv.end()) {
+        if (auto entry = app_ctx->vocab_inv.find(output_token[i]); entry == app_ctx->vocab_inv.end()) {
             LOG(WARNING) << "Token not found: " << output_token[i];
         } else {
             decode_tokens.push_back(entry->second);
@@ -553,7 +610,7 @@ int inference_marian_rknn_model(
 
     // copy output sentence
     memset(output_sentence, 0, MAX_USER_INPUT_LEN);
-    strncpy(output_sentence, decoded.c_str(), MAX_USER_INPUT_LEN-1);
+    strncpy(output_sentence, decoded.c_str(), MAX_USER_INPUT_LEN - 1);
 
     return 0;
 }
