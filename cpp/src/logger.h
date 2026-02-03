@@ -73,9 +73,9 @@ public:
         bool m_enabled{false};
     };
 
-    Logger(const std::string& name = {});
+    explicit Logger(std::string name = {});
 
-    Writer operator()(Level level = Level::Info)
+    Writer operator()(const Level level = Level::Info)
     {
         return Writer{*this, level};
     }

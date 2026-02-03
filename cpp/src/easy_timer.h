@@ -12,12 +12,15 @@
 class TIMER
 {
 private:
-    struct timeval start_time, stop_time;
-    double __get_us(struct timeval t) { return (t.tv_sec * 1000000 + t.tv_usec); }
+    struct timeval start_time{}, stop_time{};
+    double __get_us(struct timeval t)
+    {
+        return (t.tv_sec * 1000000 + t.tv_usec);
+    }
 
 public:
-    TIMER() {}
-    ~TIMER() {}
+    TIMER() = default;
+    ~TIMER() = default;
 
     void tik()
     {

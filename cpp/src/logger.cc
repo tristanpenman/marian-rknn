@@ -1,12 +1,13 @@
 #include <iostream>
 #include <mutex>
+#include <utility>
 
 #include "logger.h"
 
 using namespace std;
 
 atomic<ostream*> Logger::m_os = nullptr;
-atomic<Logger::Level> Logger::m_minLevel = Logger::Level::Info;
+atomic<Logger::Level> Logger::m_minLevel = Level::Info;
 mutex Logger::m_mutex;
 
 namespace {
@@ -27,10 +28,9 @@ const char* levelLabel(Logger::Level level)
 }
 } // namespace
 
-Logger::Logger(const string& name)
-  : m_name(name)
+Logger::Logger(string name)
+  : m_name(std::move(name))
 {
-    ostream* os = m_os.load();
 }
 
 void Logger::configure()
@@ -62,7 +62,7 @@ Logger::Writer::Writer(Logger &logger, Level level)
   : m_logger(logger)
   , m_level(level)
 {
-    m_enabled = m_logger.m_os.load() && level >= m_logger.m_minLevel.load();
+    m_enabled = m_os.load() && level >= m_minLevel.load();
     if (!m_enabled) {
         return;
     }
@@ -80,11 +80,11 @@ Logger::Writer::~Writer()
         return;
     }
 
-    ostream* os = m_logger.m_os.load();
+    ostream* os = m_os.load();
     if (!os) {
         return;
     }
 
-    lock_guard<mutex> lock(m_logger.m_mutex);
+    lock_guard lock(m_mutex);
     *os << m_ss.str() << '\n';
 }

@@ -15,7 +15,6 @@
 
 #include <algorithm>
 #include <cmath>
-#include <cstring>
 #include <fstream>
 #include <sstream>
 #include <vector>
@@ -164,13 +163,14 @@ static int greedy_decode(
 
 static int rknn_nmt_process(
     rknn_marian_rknn_context_t* app_ctx,
-    int32_t* input_token,
+    const int32_t* input_token,
     int32_t* output_token)
 {
     int ret = 0;
 
     // attention mask
-    std::vector<int32_t> attention_mask(static_cast<size_t>(app_ctx->enc_len), 0);
+    std::vector<int32_t> attention_mask;
+    attention_mask.resize(app_ctx->enc_len, 0);
 
     // count tokens
     int input_token_give = 0;
@@ -183,7 +183,8 @@ static int rknn_nmt_process(
 
     // replace trailing tokens with eos, then pad tokens
     LOG(VERBOSE) << "Tokens given: " << input_token_give;
-    std::vector<int32_t> input_token_sorted(static_cast<size_t>(app_ctx->enc_len), 0);
+    std::vector<int32_t> input_token_sorted;
+    input_token_sorted.resize(app_ctx->enc_len, 0);
     for (int i = 0; i < app_ctx->enc_len; i++) {
         if (i < input_token_give) {
             // copy original token
@@ -306,7 +307,7 @@ int init_marian_rknn_model(
     LOG(VERBOSE) << "unk token id: " << app_ctx->unk_token_id;
 
     LOG(INFO) << "Init RKNN encoder " << encoder_path;
-    app_ctx->enc.m_path = encoder_path.c_str();
+    app_ctx->enc.m_path = encoder_path;
     ret = rknn_utils_init(&app_ctx->enc);
     if (ret != 0) {
         LOG(ERROR) << "rknn_utils_init failed. ret=" << ret;
@@ -314,7 +315,7 @@ int init_marian_rknn_model(
     }
 
     LOG(INFO) << "Init RKNN decoder " << decoder_path;
-    app_ctx->dec.m_path = decoder_path.c_str();
+    app_ctx->dec.m_path = decoder_path;
     ret = rknn_utils_init(&app_ctx->dec);
     if (ret != 0) {
         LOG(ERROR) << "rknn_utils_init failed. ret=" << ret;
@@ -355,7 +356,7 @@ int init_marian_rknn_model(
 
     LOG(VERBOSE) << "rknn_set_io_mem enc inputs; n_input=" << app_ctx->enc.n_input;
     for (int input_index = 0; input_index < app_ctx->enc.n_input; input_index++) {
-        ret = rknn_set_io_mem(app_ctx->enc.ctx, app_ctx->enc.input_mem[input_index], &(app_ctx->enc.in_attr[input_index]));
+        ret = rknn_set_io_mem(app_ctx->enc.ctx, app_ctx->enc.input_mem[input_index], &app_ctx->enc.in_attr[input_index]);
         if (ret < 0) {
             LOG(ERROR) << "rknn_set_io_mem failed. ret=" << ret;
             return -1;
@@ -364,7 +365,7 @@ int init_marian_rknn_model(
 
     LOG(VERBOSE) << "rknn_set_io_mem enc outputs; n_output=" << app_ctx->enc.n_output;
     for (int output_index=0; output_index < app_ctx->enc.n_output; output_index++) {
-        ret = rknn_set_io_mem(app_ctx->enc.ctx, app_ctx->enc.output_mem[output_index], &(app_ctx->enc.out_attr[output_index]));
+        ret = rknn_set_io_mem(app_ctx->enc.ctx, app_ctx->enc.output_mem[output_index], &app_ctx->enc.out_attr[output_index]);
         if (ret < 0) {
             LOG(ERROR) << "rknn_set_io_mem failed. ret=" << ret;
             return -1;
@@ -374,11 +375,11 @@ int init_marian_rknn_model(
     LOG(VERBOSE) << "rknn_set_io_mem dec inputs; n_input=" << app_ctx->dec.n_input;
     for (int input_index=0; input_index< app_ctx->dec.n_input; input_index++) {
         if (app_ctx->dec.in_attr[input_index].fmt == RKNN_TENSOR_NHWC) {
-            rknn_query(app_ctx->dec.ctx, RKNN_QUERY_NATIVE_NC1HWC2_INPUT_ATTR, &(app_ctx->dec.in_attr[input_index]), sizeof(app_ctx->dec.in_attr[input_index]));
+            rknn_query(app_ctx->dec.ctx, RKNN_QUERY_NATIVE_NC1HWC2_INPUT_ATTR, &app_ctx->dec.in_attr[input_index], sizeof(app_ctx->dec.in_attr[input_index]));
             app_ctx->dec.input_mem[input_index] = rknn_create_mem(app_ctx->dec.ctx, app_ctx->dec.in_attr[input_index].n_elems * sizeof(float)*2);
             app_ctx->dec.in_attr[input_index].pass_through = 1;
         }
-        ret = rknn_set_io_mem(app_ctx->dec.ctx, app_ctx->dec.input_mem[input_index], &(app_ctx->dec.in_attr[input_index]));
+        ret = rknn_set_io_mem(app_ctx->dec.ctx, app_ctx->dec.input_mem[input_index], &app_ctx->dec.in_attr[input_index]);
         if (ret < 0) {
             LOG(ERROR) << "rknn_set_io_mem failed. ret=" << ret;
             return -1;
@@ -388,11 +389,11 @@ int init_marian_rknn_model(
     LOG(VERBOSE) << "rknn_set_io_mem dec outputs; n_output=" << app_ctx->dec.n_output;
     for (int output_index=0; output_index< app_ctx->dec.n_output; output_index++) {
         if (app_ctx->dec.out_attr[output_index].fmt == RKNN_TENSOR_NCHW) {
-            rknn_query(app_ctx->dec.ctx, RKNN_QUERY_NATIVE_NC1HWC2_OUTPUT_ATTR, &(app_ctx->dec.out_attr[output_index]), sizeof(app_ctx->dec.out_attr[output_index]));
+            rknn_query(app_ctx->dec.ctx, RKNN_QUERY_NATIVE_NC1HWC2_OUTPUT_ATTR, &app_ctx->dec.out_attr[output_index], sizeof(app_ctx->dec.out_attr[output_index]));
             rknn_destroy_mem(app_ctx->dec.ctx, app_ctx->dec.output_mem[output_index]);
             app_ctx->dec.output_mem[output_index] = rknn_create_mem(app_ctx->dec.ctx, app_ctx->dec.out_attr[output_index].n_elems * sizeof(float)*2);
         }
-        ret = rknn_set_io_mem(app_ctx->dec.ctx, app_ctx->dec.output_mem[output_index], &(app_ctx->dec.out_attr[output_index]));
+        ret = rknn_set_io_mem(app_ctx->dec.ctx, app_ctx->dec.output_mem[output_index], &app_ctx->dec.out_attr[output_index]);
         if (ret < 0) {
             LOG(ERROR) << "rknn_set_io_mem failed. ret=" << ret;
             return -1;
@@ -423,11 +424,11 @@ int init_marian_rknn_model(
     int V = app_ctx->lm_head.V = vocab_size;
 
     LOG(INFO) << "Load LM weight";
-    app_ctx->lm_head.Wt = (float*)(malloc(sizeof(float) * V * D));
+    app_ctx->lm_head.Wt = static_cast<float *>(malloc(sizeof(float) * V * D));
     read_fp32_from_file(lm_weight_path.c_str(), V * D, app_ctx->lm_head.Wt);
 
     LOG(INFO) << "Load LM bias";
-    app_ctx->lm_head.b = (float*)(malloc(sizeof(float) * V));
+    app_ctx->lm_head.b = static_cast<float *>(malloc(sizeof(float) * V));
     read_fp32_from_file(lm_bias_path.c_str(), V, app_ctx->lm_head.b);
 
     LOG(INFO) << "Load vocab";
@@ -435,7 +436,7 @@ int init_marian_rknn_model(
 
     LOG(VERBOSE) << "Invert vocab";
     app_ctx->vocab_inv.reserve(app_ctx->vocab.size());
-    for (auto entry : app_ctx->vocab) {
+    for (const auto& entry : app_ctx->vocab) {
         auto existing = app_ctx->vocab_inv.find(entry.second);
         if (existing != app_ctx->vocab_inv.end()) {
             LOG(ERROR) << "Vocab is not unique. Duplicate found on ID: " << entry.second;
@@ -466,7 +467,7 @@ int inference_marian_rknn_model(
 {
     // TODO: Remove magic number
     int token_list[100];
-    int token_list_len = 0;
+    size_t token_list_len = 0;
     memset(token_list, 0, sizeof(token_list));
 
     // encode tokens
@@ -474,7 +475,7 @@ int inference_marian_rknn_model(
     auto pieces = app_ctx->spm_src.EncodeAsPieces(std::string(input_sentence));
     std::ostringstream pieces_stream;
     pieces_stream << "sentence pieces:";
-    for (auto piece : pieces) {
+    for (const auto& piece : pieces) {
         pieces_stream << " " << piece;
     }
     LOG(VERBOSE) << pieces_stream.str();
@@ -482,9 +483,8 @@ int inference_marian_rknn_model(
     // apply vocab mapping
     LOG(VERBOSE) << "Apply vocab mapping";
     encoded_tokens.reserve(pieces.size());
-    for (auto piece : pieces) {
-        auto itr = app_ctx->vocab.find(piece);
-        if (itr == app_ctx->vocab.end()) {
+    for (const auto& piece : pieces) {
+        if (auto itr = app_ctx->vocab.find(piece); itr == app_ctx->vocab.end()) {
             // unknown token
             encoded_tokens.push_back(app_ctx->unk_token_id);
         } else {
@@ -504,7 +504,7 @@ int inference_marian_rknn_model(
     }
 
     // check input length
-    int max_input_len = app_ctx->enc_len;
+    uint32_t max_input_len = app_ctx->enc_len;
     if (token_list_len > max_input_len) {
         LOG(WARNING) << "token_len(" << token_list_len << ") > max_input_len(" << max_input_len
                      << "), only keep " << max_input_len << " tokens!";
@@ -524,7 +524,8 @@ int inference_marian_rknn_model(
     }
 
     // run model
-    std::vector<int32_t> output_token(app_ctx->dec_len, 0);
+    std::vector<int32_t> output_token;
+    output_token.resize(app_ctx->dec_len, 0);
     int output_len = 0;
     output_len = rknn_nmt_process(app_ctx, token_list, output_token.data());
 
@@ -545,8 +546,7 @@ int inference_marian_rknn_model(
 
     // decode tokens
     std::string decoded;
-    auto status = app_ctx->spm_tgt.Decode(decode_tokens, &decoded);
-    if (!status.ok()) {
+    if (auto status = app_ctx->spm_tgt.Decode(decode_tokens, &decoded); !status.ok()) {
         LOG(ERROR) << "Sentencepiece decode failed: " << status.ToString();
         return -1;
     }

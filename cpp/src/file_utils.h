@@ -19,7 +19,7 @@ std::string join_path(const std::string& dir, const char* name);
  * @param out_data [out] Read data
  * @return int -1: error; > 0: Read data size
  */
-int read_data_from_file(const char *path, char **out_data);
+long read_data_from_file(const char *path, char **out_data);
 
 /**
  * @brief Read floats (fp32) from file

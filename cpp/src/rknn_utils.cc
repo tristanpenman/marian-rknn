@@ -1,5 +1,3 @@
-#include <cstdio>
-#include <cstdlib>
 #include <cstring>
 #include <string>
 
@@ -7,7 +5,7 @@
 #include "rknn_utils.h"
 #include "logger.h"
 
-static void dump_tensor_attr(rknn_tensor_attr *attr)
+static void dump_tensor_attr(const rknn_tensor_attr *attr)
 {
     char dims_str[100];
     char temp_str[100];
@@ -33,13 +31,13 @@ static void dump_tensor_attr(rknn_tensor_attr *attr)
 
 int rknn_utils_init(MODEL_INFO* model_info)
 {
-    if (model_info->m_path == nullptr) {
+    if (model_info->m_path.empty()) {
         LOG(ERROR) << "Model path is null";
         return -1;
     }
 
     int ret = 0;
-    ret = rknn_init(&model_info->ctx, (void *)model_info->m_path, 0, model_info->init_flag, NULL);
+    ret = rknn_init(&model_info->ctx, model_info->m_path.data(), 0, model_info->init_flag, nullptr);
     if (ret < 0) {
         LOG(ERROR) << "rknn_init failed. ret=" << ret;
         return -1;
@@ -155,12 +153,12 @@ int rknn_utils_get_type_size(rknn_tensor_type type)
 }
 
 int rknn_utils_init_input_buffer(
-    MODEL_INFO* model_info,
-    int node_index,
-    API_TYPE api_type,
-    uint8_t pass_through,
-    rknn_tensor_type dtype,
-    rknn_tensor_format layout_fmt)
+    const MODEL_INFO* model_info,
+    const int node_index,
+    const API_TYPE api_type,
+    const uint8_t pass_through,
+    const rknn_tensor_type dtype,
+    const rknn_tensor_format layout_fmt)
 {
     if (model_info->rkdmo_input_param[node_index]._already_init) {
         LOG(ERROR) << "Model input buffer already initialized";
@@ -310,23 +308,6 @@ int rknn_utils_reset_all_buffer(MODEL_INFO* model_info)
     memset(model_info->rkdmo_output_param, 0, sizeof(RKNN_UTILS_OUTPUT_PARAM) * model_info->n_output);
 
     return 0;
-}
-
-static void dump_input_dynamic_range(rknn_input_range *dyn_range)
-{
-    std::string range_str;
-    for (int n = 0; n < dyn_range->shape_number; ++n) {
-        range_str += n == 0 ? "[" : ",[";
-        range_str += dyn_range->n_dims < 1 ? "" : std::to_string(dyn_range->dyn_range[n][0]);
-        for (int i = 1; i < dyn_range->n_dims; ++i) {
-            range_str += ", " + std::to_string(dyn_range->dyn_range[n][i]);
-        }
-        range_str += "]";
-    }
-
-    LOG(VERBOSE) << "  index=" << dyn_range->index << ", name=" << dyn_range->name
-                 << ", shape_number=" << dyn_range->shape_number
-                 << ", range=[" << range_str << "], fmt=" << get_format_string(dyn_range->fmt);
 }
 
 int rknn_utils_release(MODEL_INFO* model_info)

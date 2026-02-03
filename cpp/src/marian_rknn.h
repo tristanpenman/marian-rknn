@@ -61,8 +61,8 @@ struct rknn_marian_rknn_context_t
     int unk_token_id;
 
     // other constants
-    int enc_len;
-    int dec_len;
+    size_t enc_len;
+    size_t dec_len;
 };
 
 int init_marian_rknn_model(
