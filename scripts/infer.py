@@ -9,8 +9,6 @@ import sentencepiece as spm
 DEFAULT_ENC_LEN = 32
 DEFAULT_DEC_LEN = 32
 
-MODEL_DIM = 512
-
 ENC_IN_INPUT_IDS_IDX = 0
 ENC_IN_ATTENTION_MASK_IDX = 1
 
@@ -23,9 +21,11 @@ def load_config(config_path):
     with open(config_path, "r", encoding="utf-8") as handle:
         return json.load(handle)
 
-def load_vocab(vocab_path):
+def load_vocab(vocab_path, vocab_size):
     with open(vocab_path, "r", encoding="utf-8") as handle:
         vocab = json.load(handle)
+    if len(vocab.items()) != vocab_size:
+        raise RuntimeError(f"Vocab file does not match expected size. Actual: {len(vocab.items())}, expected: {vocab_size}")
     vocab_inv = {}
     for token, token_id in vocab.items():
         if token_id in vocab_inv:
@@ -45,17 +45,11 @@ def load_rknn_model(model_path):
         raise RuntimeError(f"Failed to initialize RKNN runtime: {model_path}")
     return rknn
 
-def load_lm_weights(model_path, vocab_size):
+def load_lm_weights(model_path):
     weight_path = f"{model_path}/lm_weight.raw"
     bias_path = f"{model_path}/lm_bias.raw"
     weight = np.fromfile(weight_path, dtype=np.float32)
     bias = np.fromfile(bias_path, dtype=np.float32)
-    if weight.size % vocab_size != 0:
-        raise ValueError("LM weight size is not divisible by vocab size.")
-    hidden_size = weight.size // vocab_size
-    weight = weight.reshape(vocab_size, hidden_size)
-    if bias.size != vocab_size:
-        raise ValueError("LM bias size does not match vocab size.")
     return weight, bias
 
 def build_attention_mask(input_ids, eos_token_id):
@@ -233,16 +227,33 @@ def translate_line(
 
 def inference(rknn_enc, rknn_dec, lm_weight, lm_bias, input_path, enc_len=None, dec_len=None, beam_search=None, lines=None):
     config = load_config(f"{input_path}/config.json")
-    d_model = config.get("d_model", 0)
-    if d_model != MODEL_DIM:
-        raise ValueError(f"Model dimension mismatch: expected {MODEL_DIM}, got {d_model}")
 
     decoder_start_token_id = config.get("decoder_start_token_id", 59513)
     pad_token_id = config.get("pad_token_id", decoder_start_token_id)
     eos_token_id = config.get("eos_token_id", 0)
     unk_token_id = config.get("unk_token_id", 0)
 
-    vocab, vocab_inv = load_vocab(f"{input_path}/vocab.json")
+    model_dim = config.get("d_model")
+    if model_dim is None:
+        raise ValueError("Missing 'd_model' in config.json")
+
+    vocab_size = config.get("vocab_size")
+    if model_dim is None:
+        raise ValueError("Missing 'vocab_size' in config.json")
+
+    # will raise if size is wrong
+    vocab, vocab_inv = load_vocab(f"{input_path}/vocab.json", vocab_size)
+
+    if lm_weight.size % vocab_size != 0:
+        raise ValueError("LM weight size is not divisible by vocab size.")
+    if lm_bias.size % vocab_size != 0:
+        raise ValueError("LM bias size is not divisible by vocab size.")
+
+    hidden_size = lm_weight.size // vocab_size
+    if hidden_size != model_dim:
+        raise ValueError("LM weight size not compatible with hidden size.")
+
+    lm_weight = lm_weight.reshape(vocab_size, hidden_size)
 
     spm_src = spm.SentencePieceProcessor(model_file=f"{input_path}/source.spm")
     spm_tgt = spm.SentencePieceProcessor(model_file=f"{input_path}/target.spm")
@@ -299,11 +310,8 @@ def parse_args():
 def main():
     args = parse_args()
 
-    # vocab
-    vocab, _ = load_vocab(f"{args.model_path}/vocab.json")
-
     # lm head
-    lm_weight, lm_bias = load_lm_weights(args.model_path, len(vocab))
+    lm_weight, lm_bias = load_lm_weights(args.model_path)
 
     # models
     rknn_enc = load_rknn_model(f"{args.model_path}/encoder.rknn")

@@ -4,7 +4,7 @@ import argparse
 import torch
 import numpy as np
 
-from infer import inference, DEFAULT_DEC_LEN, DEFAULT_ENC_LEN, MODEL_DIM
+from infer import inference, load_config, DEFAULT_DEC_LEN, DEFAULT_ENC_LEN
 
 from rknn.api import RKNN
 
@@ -110,8 +110,13 @@ def convert_weights(input_path, output_path):
 def main():
     input_path, platform, do_quant, output_path, dynamic_input, enc_len, dec_len = parse_arg()
 
+    config = load_config(f"{input_path}/config.json")
+    model_dim = config.get("d_model")
+    if model_dim is None:
+        raise ValueError("Missing 'd_model' in config.json")
+
     encoder_input_size_list = [[1, enc_len], [1, enc_len]]
-    decoder_input_size_list = [[1, dec_len], [1, dec_len], [1, dec_len, MODEL_DIM]]
+    decoder_input_size_list = [[1, dec_len], [1, dec_len], [1, dec_len, model_dim]]
 
     print('Converting encoder...')
     rknn_enc = convert_model(f"{input_path}/encoder.onnx", platform, do_quant, dynamic_input,
