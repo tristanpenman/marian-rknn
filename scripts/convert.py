@@ -14,6 +14,7 @@ DECODER_INPUTS = ['input_ids', 'attention_mask', 'encoder_hidden_states']
 ENCODER_INPUTS = ['input_ids', 'attention_mask']
 
 def parse_arg():
+    """Parse command line arguments, returning them as a tuple."""
     parser = argparse.ArgumentParser(
         description="Convert Marian ONNX models to RKNN.",
     )
@@ -58,20 +59,33 @@ def parse_arg():
 
     return args.input_path, args.platform, do_quant, output_path, args.dynamic_input, args.enc_len, args.dec_len
 
-def convert_model(model_path, platform, do_quant, dynamic_input, output_path, inputs, input_size_list):
+def convert_model(
+    model_path,
+    platform,
+    do_quant,
+    dynamic_input,
+    output_path,
+    inputs,
+    input_size_list
+):
+    """Configure, compile, and export an RKNN model for the target platform.
+
+    When dynamic_input is enabled, we still pass concrete sizes so the RKNN
+    compiler can validate and infer shapes for the encoder/decoder interfaces.
+
+    Warning: The C++ rknn_api fails with std::out_of_range exceptions when
+    loading models with `dynamic_input` enabled.
+    """
     rknn = RKNN(verbose=False)
 
     print('--> Config model')
     if dynamic_input:
-        # Warning: This is disabled by default, as the C++ rknn_api fails with
-        # std::out_of_range exceptions when loading models with `dynamic_input`
+        # Warning: The C++ rknn_api fails with std::out_of_range exceptions
+        # when loading models with `dynamic_input`
         rknn.config(target_platform=platform, dynamic_input=[input_size_list])
     else:
         rknn.config(target_platform=platform)
 
-    print('done')
-
-    # Load model
     print('--> Loading model')
     ret = rknn.load_onnx(model=model_path,
                          inputs=inputs,
@@ -79,28 +93,27 @@ def convert_model(model_path, platform, do_quant, dynamic_input, output_path, in
     if ret != 0:
         print('Load model failed!')
         exit(ret)
-    print('done')
 
-    # Build model
     print('--> Building model')
     ret = rknn.build(do_quantization=do_quant)
     if ret != 0:
         print('Build model failed!')
         exit(ret)
-    print('done')
 
-    # Export rknn model
     print('--> Export rknn model')
     ret = rknn.export_rknn(output_path)
     if ret != 0:
         print('Export rknn model failed!')
         exit(ret)
-    print('done')
 
     return rknn
 
 
 def convert_weights(input_path, output_path):
+    """Convert Torch LM head tensors to raw float32 for runtime matmul + bias.
+
+    These can be loaded back into tensors in Python, or natively in C++.
+    """
     tensor = torch.load(input_path, weights_only=True)
     weights = tensor.detach().numpy().astype(np.float32)
     weights.tofile(output_path)
@@ -108,6 +121,7 @@ def convert_weights(input_path, output_path):
 
 
 def main():
+    """Convert encoder/decoder ONNX models and LM head weights to RKNN assets."""
     input_path, platform, do_quant, output_path, dynamic_input, enc_len, dec_len = parse_arg()
 
     config = load_config(f"{input_path}/config.json")

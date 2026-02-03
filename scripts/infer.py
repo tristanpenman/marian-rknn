@@ -15,13 +15,31 @@ ENC_IN_ATTENTION_MASK_IDX = 1
 DEC_IN_INPUT_IDS_IDX = 0
 DEC_IN_ATTENTION_MASK_IDX = 1
 
+def parse_args():
+    """Parse command line arguments."""
+    parser = argparse.ArgumentParser(description="Run RKNN Marian translation.")
+    parser.add_argument("model_path", help="Path to the directory containing the model files.")
+    parser.add_argument("--beam-search", action="store_true", help="Use beam search decoding instead of greedy decoding.")
+    parser.add_argument("--beam-depth", type=int, default=None, help="Maximum decoding depth for beam search.")
+    parser.add_argument("--beam-width", type=int, default=4, help="Beam width for beam search decoding.")
+    parser.add_argument("--enc-len", type=int, default=DEFAULT_ENC_LEN, help="Encoder sequence length (default: 32).")
+    parser.add_argument("--dec-len", type=int, default=DEFAULT_DEC_LEN, help="Decoder sequence length (default: 32).")
+    parser.add_argument(
+        "inputs",
+        nargs="*",
+        help="Optional text strings to translate (quote to preserve spaces).",
+    )
+    return parser.parse_args()
+
 def load_config(config_path):
+    """Load MarianMT configuration file."""
     if not os.path.exists(config_path):
         return {}
     with open(config_path, "r", encoding="utf-8") as handle:
         return json.load(handle)
 
 def load_vocab(vocab_path, vocab_size):
+    """Load a JSON-formatted vocab file and build inverse index."""
     with open(vocab_path, "r", encoding="utf-8") as handle:
         vocab = json.load(handle)
     if len(vocab.items()) != vocab_size:
@@ -34,6 +52,7 @@ def load_vocab(vocab_path, vocab_size):
     return vocab, vocab_inv
 
 def load_rknn_model(model_path):
+    """Load an RKNN model and initialise for runtime inference."""
     # pylint: disable-next=import-error
     from rknnlite.api import RKNNLite
 
@@ -46,6 +65,7 @@ def load_rknn_model(model_path):
     return rknn
 
 def load_lm_weights(model_path):
+    """Load the LM head weights/bias for logit computations."""
     weight_path = f"{model_path}/lm_weight.raw"
     bias_path = f"{model_path}/lm_bias.raw"
     weight = np.fromfile(weight_path, dtype=np.float32)
@@ -53,6 +73,7 @@ def load_lm_weights(model_path):
     return weight, bias
 
 def build_attention_mask(input_ids, eos_token_id):
+    """Build an attention mask that zeros out tokens after the first EOS."""
     attention = np.ones_like(input_ids, dtype=np.int32)
     eos_positions = np.where(input_ids == eos_token_id)[1]
     if eos_positions.size > 0:
@@ -61,14 +82,14 @@ def build_attention_mask(input_ids, eos_token_id):
     return attention
 
 def prepare_encoder_inputs(tokens, enc_len, pad_token_id, eos_token_id):
+    """Prepare inputs by padding out to `enc_len`, and add EOS if needed."""
     input_ids = np.full((1, enc_len), pad_token_id, dtype=np.int32)
     length = min(len(tokens), enc_len)
     if length:
         input_ids[0, :length] = tokens[:length]
     if length < enc_len:
         input_ids[0, length] = eos_token_id
-    attention_mask = build_attention_mask(input_ids, eos_token_id)
-    return input_ids, attention_mask
+    return input_ids
 
 def beam_search_decode(
     rknn_dec,
@@ -83,6 +104,11 @@ def beam_search_decode(
     beam_width,
     beam_depth
 ):
+    """Decode with beam search, keeping the top-k partial sequences.
+
+    The number of sequences to keep is determined by `beam_width`, and the
+    maximum length of each sequence is determined by `beam_depth`.
+    """
     max_steps = min(dec_len - 1, beam_depth) if beam_depth else dec_len - 1
     beams = [([], 0.0, False)]
 
@@ -135,8 +161,14 @@ def greedy_decode(
     decoder_start_token_id,
     pad_token_id,
     eos_token_id,
-    dec_len,
+    dec_len
 ):
+    """Decode by taking the argmax token at each timestep.
+
+    This is supposed to be same as beam search with a beam width of one, which
+    makes this function redundant. It has been kept for primarily for its
+    pedogogical value.
+    """
     decoder_input_ids = np.full((1, dec_len), pad_token_id, dtype=np.int32)
     decoder_input_ids[0, 0] = decoder_start_token_id
     output_tokens = []
@@ -175,12 +207,20 @@ def translate_line(
     unk_token_id,
     beam_search
 ):
+    """Translate a single line using the encoder and decoder RKNN models.
+
+    Beam search can be enabled by setting `beam_search` to a tuple containing
+    the desired beam width (e.g. 4) and beam depth (or None to use the decoder
+    sequence length).
+    """
     pieces = spm_src.encode(line, out_type=str)
     tokens = [vocab.get(piece, unk_token_id) for piece in pieces]
 
-    encoder_input_ids, attention_mask = prepare_encoder_inputs(
+    encoder_input_ids = prepare_encoder_inputs(
         tokens, enc_len, pad_token_id, eos_token_id
     )
+
+    attention_mask = build_attention_mask(encoder_input_ids, eos_token_id)
 
     encoder_outputs = rknn_enc.inference(
         inputs=[encoder_input_ids, attention_mask]
@@ -225,7 +265,26 @@ def translate_line(
 
     return spm_tgt.decode(decoded_pieces)
 
-def inference(rknn_enc, rknn_dec, lm_weight, lm_bias, input_path, enc_len=None, dec_len=None, beam_search=None, lines=None):
+def inference(
+    rknn_enc,
+    rknn_dec,
+    lm_weight,
+    lm_bias,
+    input_path,
+    enc_len=None,
+    dec_len=None,
+    beam_search=None,
+    lines=None
+):
+    """Run translation for provided lines or in interactive mode.
+
+    The encoder and decoder models need to be provided as inputs, as do the
+    LM head weights and biases. This is to facilitate re-use in the conversion
+    script.
+
+    All other data will be loaded from the directory at `input_path`. This
+    includes the config file, vocabulary and SentencePiece models.
+    """
     config = load_config(f"{input_path}/config.json")
 
     decoder_start_token_id = config.get("decoder_start_token_id", 59513)
@@ -292,22 +351,8 @@ def inference(rknn_enc, rknn_dec, lm_weight, lm_bias, input_path, enc_len=None, 
             break
         print(do_translate(line))
 
-def parse_args():
-    parser = argparse.ArgumentParser(description="Run RKNN Marian translation.")
-    parser.add_argument("model_path", help="Path to the directory containing the model files.")
-    parser.add_argument("--beam-search", action="store_true", help="Use beam search decoding instead of greedy decoding.")
-    parser.add_argument("--beam-depth", type=int, default=None, help="Maximum decoding depth for beam search.")
-    parser.add_argument("--beam-width", type=int, default=4, help="Beam width for beam search decoding.")
-    parser.add_argument("--enc-len", type=int, default=DEFAULT_ENC_LEN, help="Encoder sequence length (default: 32).")
-    parser.add_argument("--dec-len", type=int, default=DEFAULT_DEC_LEN, help="Decoder sequence length (default: 32).")
-    parser.add_argument(
-        "inputs",
-        nargs="*",
-        help="Optional text strings to translate (quote to preserve spaces).",
-    )
-    return parser.parse_args()
-
 def main():
+    """Load RKNN models, LM weights/biases, and hand off to inference loop."""
     args = parse_args()
 
     # lm head
