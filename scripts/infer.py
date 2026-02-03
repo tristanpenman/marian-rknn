@@ -6,10 +6,16 @@ import os
 import numpy as np
 import sentencepiece as spm
 
-ENC_LEN = 32
-DEC_LEN = 32
+DEFAULT_ENC_LEN = 32
+DEFAULT_DEC_LEN = 32
 
 MODEL_DIM = 512
+
+ENC_IN_INPUT_IDS_IDX = 0
+ENC_IN_ATTENTION_MASK_IDX = 1
+
+DEC_IN_INPUT_IDS_IDX = 0
+DEC_IN_ATTENTION_MASK_IDX = 1
 
 def load_config(config_path):
     if not os.path.exists(config_path):
@@ -51,7 +57,6 @@ def load_lm_weights(model_path, vocab_size):
     if bias.size != vocab_size:
         raise ValueError("LM bias size does not match vocab size.")
     return weight, bias
-
 
 def build_attention_mask(input_ids, eos_token_id):
     attention = np.ones_like(input_ids, dtype=np.int32)
@@ -226,7 +231,7 @@ def translate_line(
 
     return spm_tgt.decode(decoded_pieces)
 
-def inference(rknn_enc, rknn_dec, lm_weight, lm_bias, input_path, enc_len, dec_len, beam_search=None, lines=None):
+def inference(rknn_enc, rknn_dec, lm_weight, lm_bias, input_path, enc_len=None, dec_len=None, beam_search=None, lines=None):
     config = load_config(f"{input_path}/config.json")
     d_model = config.get("d_model", 0)
     if d_model != MODEL_DIM:
@@ -282,6 +287,8 @@ def parse_args():
     parser.add_argument("--beam-search", action="store_true", help="Use beam search decoding instead of greedy decoding.")
     parser.add_argument("--beam-depth", type=int, default=None, help="Maximum decoding depth for beam search.")
     parser.add_argument("--beam-width", type=int, default=4, help="Beam width for beam search decoding.")
+    parser.add_argument("--enc-len", type=int, default=DEFAULT_ENC_LEN, help="Encoder sequence length (default: 32).")
+    parser.add_argument("--dec-len", type=int, default=DEFAULT_DEC_LEN, help="Decoder sequence length (default: 32).")
     parser.add_argument(
         "inputs",
         nargs="*",
@@ -313,10 +320,10 @@ def main():
             lm_weight,
             lm_bias,
             args.model_path,
-            ENC_LEN,
-            DEC_LEN,
-            beam_search,
-            lines
+            enc_len=args.enc_len,
+            dec_len=args.dec_len,
+            beam_search=beam_search,
+            lines=lines
         )
     finally:
         rknn_enc.release()

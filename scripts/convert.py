@@ -4,17 +4,14 @@ import argparse
 import torch
 import numpy as np
 
-from infer import inference, DEC_LEN, ENC_LEN, MODEL_DIM
+from infer import inference, DEFAULT_DEC_LEN, DEFAULT_ENC_LEN, MODEL_DIM
 
 from rknn.api import RKNN
 
 DEFAULT_QUANT = False
 
 DECODER_INPUTS = ['input_ids', 'attention_mask', 'encoder_hidden_states']
-DECODER_INPUT_SIZE_LIST = [[1, DEC_LEN], [1, DEC_LEN], [1, DEC_LEN, MODEL_DIM]]
-
 ENCODER_INPUTS = ['input_ids', 'attention_mask']
-ENCODER_INPUT_SIZE_LIST = [[1, ENC_LEN], [1, ENC_LEN]]
 
 def parse_arg():
     parser = argparse.ArgumentParser(
@@ -22,6 +19,8 @@ def parse_arg():
     )
     parser.add_argument("input_path", help="Path to the directory containing the ONNX files.")
     parser.add_argument("--dynamic-input", action="store_true", default=False, help="Export model using dynamic inputs (default=off).")
+    parser.add_argument("--enc-len", type=int, default=DEFAULT_ENC_LEN, help="Encoder sequence length (default: 32).")
+    parser.add_argument("--dec-len", type=int, default=DEFAULT_DEC_LEN, help="Decoder sequence length (default: 32).")
     parser.add_argument(
         "platform",
         choices=[
@@ -51,10 +50,13 @@ def parse_arg():
 
     args = parser.parse_args()
 
+    if args.enc_len <= 0 or args.dec_len <= 0:
+        parser.error("Encoder and decoder lengths must be positive.")
+
     do_quant = DEFAULT_QUANT
     output_path = args.output_path or args.input_path
 
-    return args.input_path, args.platform, do_quant, output_path, args.dynamic_input
+    return args.input_path, args.platform, do_quant, output_path, args.dynamic_input, args.enc_len, args.dec_len
 
 def convert_model(model_path, platform, do_quant, dynamic_input, output_path, inputs, input_size_list):
     rknn = RKNN(verbose=False)
@@ -106,15 +108,18 @@ def convert_weights(input_path, output_path):
 
 
 def main():
-    input_path, platform, do_quant, output_path, dynamic_input = parse_arg()
+    input_path, platform, do_quant, output_path, dynamic_input, enc_len, dec_len = parse_arg()
+
+    encoder_input_size_list = [[1, enc_len], [1, enc_len]]
+    decoder_input_size_list = [[1, dec_len], [1, dec_len], [1, dec_len, MODEL_DIM]]
 
     print('Converting encoder...')
     rknn_enc = convert_model(f"{input_path}/encoder.onnx", platform, do_quant, dynamic_input,
-                             f"{output_path}/encoder.rknn", ENCODER_INPUTS, ENCODER_INPUT_SIZE_LIST)
+                             f"{output_path}/encoder.rknn", ENCODER_INPUTS, encoder_input_size_list)
 
     print('Converting decoder...')
     rknn_dec = convert_model(f"{input_path}/decoder.onnx", platform, do_quant, dynamic_input,
-                             f"{output_path}/decoder.rknn", DECODER_INPUTS, DECODER_INPUT_SIZE_LIST)
+                             f"{output_path}/decoder.rknn", DECODER_INPUTS, decoder_input_size_list)
 
     print('Converting LM weights...')
     lm_weight = convert_weights(f"{input_path}/lm_weight.bin",
@@ -131,7 +136,15 @@ def main():
         if rknn_dec.init_runtime(target=None) != 0:
             raise RuntimeError("Failed to initialize RKNN decoder runtime")
 
-        inference(rknn_enc, rknn_dec, lm_weight, lm_bias, input_path, ENC_LEN, DEC_LEN)
+        inference(
+            rknn_enc,
+            rknn_dec,
+            lm_weight,
+            lm_bias,
+            input_path,
+            enc_len=enc_len,
+            dec_len=dec_len,
+        )
 
     finally:
         rknn_enc.release()
