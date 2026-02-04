@@ -1,24 +1,24 @@
 #include <cstring>
+#include <sstream>
 #include <string>
 
 #include "rknn_api.h"
 #include "rknn_utils.h"
 #include "logger.h"
 
-static void dump_tensor_attr(const rknn_tensor_attr *attr)
+namespace {
+
+void dump_tensor_attr(const rknn_tensor_attr *attr)
 {
-    char dims_str[100];
-    char temp_str[100];
-    memset(dims_str, 0, sizeof(dims_str));
+    std::ostringstream dims_stream;
     for (int i = 0; i < attr->n_dims; i++) {
-        strcpy(temp_str, dims_str);
-        sprintf(dims_str, "%s%d,", temp_str, attr->dims[i]);
+        dims_stream << attr->dims[i] << ",";
     }
 
     LOG(VERBOSE) << "  index=" << attr->index
                  << ", name=" << attr->name
                  << ", n_dims=" << attr->n_dims
-                 << ", dims=[" << dims_str
+                 << ", dims=[" << dims_stream.str()
                  << "], n_elems=" << attr->n_elems
                  << ", size=" << attr->size
                  << ", size_with_stride=" << attr->size_with_stride
@@ -28,6 +28,8 @@ static void dump_tensor_attr(const rknn_tensor_attr *attr)
                  << ", zp=" << attr->zp
                  << ", scale=" << attr->scale;
 }
+
+} // namespace
 
 int rknn_utils_init(MODEL_INFO* model_info)
 {
