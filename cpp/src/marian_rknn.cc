@@ -522,8 +522,8 @@ int release_marian_rknn_model(rknn_marian_rknn_context_t* app_ctx)
 
 int inference_marian_rknn_model(
     rknn_marian_rknn_context_t* app_ctx,
-    const char* input_sentence,
-    char* output_sentence)
+    const std::string &input_sentence,
+    std::string &output_sentence)
 {
     // TODO: Remove magic number
     int token_list[100];
@@ -532,7 +532,7 @@ int inference_marian_rknn_model(
 
     // encode tokens
     std::vector<int> encoded_tokens;
-    auto pieces = app_ctx->spm_src.EncodeAsPieces(std::string(input_sentence));
+    auto pieces = app_ctx->spm_src.EncodeAsPieces(input_sentence);
     std::ostringstream pieces_stream;
     pieces_stream << "sentence pieces:";
     for (const auto& piece : pieces) {
@@ -602,15 +602,11 @@ int inference_marian_rknn_model(
     }
 
     // decode tokens
-    std::string decoded;
-    if (auto status = app_ctx->spm_tgt.Decode(decode_tokens, &decoded); !status.ok()) {
+    output_sentence.clear();
+    if (auto status = app_ctx->spm_tgt.Decode(decode_tokens, &output_sentence); !status.ok()) {
         LOG(ERROR) << "Sentencepiece decode failed: " << status.ToString();
         return -1;
     }
-
-    // copy output sentence
-    memset(output_sentence, 0, MAX_USER_INPUT_LEN);
-    strncpy(output_sentence, decoded.c_str(), MAX_USER_INPUT_LEN - 1);
 
     return 0;
 }

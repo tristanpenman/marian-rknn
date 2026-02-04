@@ -74,5 +74,5 @@ int release_marian_rknn_model(
 
 int inference_marian_rknn_model(
     rknn_marian_rknn_context_t* app_ctx,
-    const char* input_sentence,
-    char* output_sentence);
+    const std::string &input_sentence,
+    std::string &output_sentence);

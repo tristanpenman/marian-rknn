@@ -13,6 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <array>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -21,22 +22,11 @@
 #include "logger.h"
 #include "marian_rknn.h"
 
-int read_user_input(char* buffer)
+int read_user_input(std::string &line)
 {
     std::cout << "Enter text to translate:\n";
-    std::string line;
+    line.clear();
     if (!std::getline(std::cin, line)) {
-        return -1;
-    }
-
-    if (line.size() >= MAX_USER_INPUT_LEN) {
-        line.resize(MAX_USER_INPUT_LEN - 1);
-    }
-
-    std::strncpy(buffer, line.c_str(), MAX_USER_INPUT_LEN);
-    buffer[MAX_USER_INPUT_LEN - 1] = '\0';
-
-    if (strcmp(buffer, "q") == 0) {
         return -1;
     }
 
@@ -70,40 +60,41 @@ int main(const int argc, char **argv)
 
     rknn_marian_rknn_context_t rknn_app_ctx;
 
-    const auto input_strings = static_cast<char *>(malloc(MAX_USER_INPUT_LEN));
-    const auto output_strings = static_cast<char *>(malloc(MAX_USER_INPUT_LEN));
-    memset(input_strings, 0, MAX_USER_INPUT_LEN);
-    memset(output_strings, 0, MAX_USER_INPUT_LEN);
+    std::string input_text;
+    std::string output_text;
 
     int ret = init_marian_rknn_model(model_dir, &rknn_app_ctx);
     if (ret != 0) {
         LOG(ERROR) << "init_marian_rknn_model failed";
-        goto out;
+        return 1;
     }
 
     LOG(INFO) << "Model init complete";
     if (positional_args.size() > 2) {
         is_receipt = true;
         for (size_t i = 2; i < positional_args.size(); i++) {
-            strcat(input_strings, positional_args[i]);
-            strcat(input_strings, " ");
+            input_text += positional_args[i];
+            input_text += " ";
         }
 
-        LOG(INFO) << "Read input from cmd line: " << input_strings;
+        LOG(INFO) << "Read input from cmd line: " << input_text;
     }
 
     while (true) {
         if (is_receipt == false) {
-            memset(input_strings, 0, MAX_USER_INPUT_LEN);
-            if (const int num_word = read_user_input(input_strings); num_word == -1) {
+            if (ret = read_user_input(input_text); ret == -1) {
                 break;
             }
+        }
+
+        if (input_text.size() >= MAX_USER_INPUT_LEN) {
+            input_text.resize(MAX_USER_INPUT_LEN - 1);
         }
 
         LOG(INFO) << "About to run inference...";
 
         timer.tik();
-        ret = inference_marian_rknn_model(&rknn_app_ctx, input_strings, output_strings);
+        ret = inference_marian_rknn_model(&rknn_app_ctx, input_text, output_text);
         if (ret != 0) {
             LOG(ERROR) << "marian_rknn_model inference failed. ret=" << ret;
             break;
@@ -111,20 +102,17 @@ int main(const int argc, char **argv)
         timer.tok();
         timer.print_time("Inference time");
 
-        LOG(INFO) << "Output: " << output_strings;
+        LOG(INFO) << "Output: " << output_text;
 
         if (is_receipt == true) {
             break;
         }
     }
 
-out:
     ret = release_marian_rknn_model(&rknn_app_ctx);
     if (ret != 0) {
         LOG(ERROR) << "release_marian_rknn_model failed. ret=" << ret;
     }
-    free(input_strings);
-    free(output_strings);
 
     return 0;
 }
