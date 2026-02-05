@@ -1,6 +1,5 @@
 #pragma once
 
-#include <cstdlib>
 #include <string>
 
 #include <rknn_api.h>
@@ -54,14 +53,14 @@ struct MODEL_INFO
     rknn_tensor_attr* in_attr_native = nullptr;
     rknn_input *inputs;
     rknn_tensor_mem **input_mem;
-    RKNN_UTILS_INPUT_PARAM *rkdmo_input_param;
+    RKNN_UTILS_INPUT_PARAM *rknn_input_param;
 
     size_t n_output;
     rknn_tensor_attr* out_attr = nullptr;
     rknn_tensor_attr* out_attr_native = nullptr;
     rknn_output *outputs;
     rknn_tensor_mem **output_mem;
-    RKNN_UTILS_OUTPUT_PARAM *rkdmo_output_param;
+    RKNN_UTILS_OUTPUT_PARAM *rknn_output_param;
 
     int diff_input_idx = -1;
     int init_flag = 0;
@@ -78,9 +77,9 @@ int rknn_utils_init(MODEL_INFO* model_info);
 int rknn_utils_query_model_info(MODEL_INFO* model_info);
 
 int rknn_utils_init_input_buffer(const MODEL_INFO* model_info, int node_index, API_TYPE api_type, uint8_t pass_through, rknn_tensor_type dtype, rknn_tensor_format layout_fmt);
-int rknn_utils_init_output_buffer(MODEL_INFO* model_info, int node_index, API_TYPE api_type);
+int rknn_utils_init_output_buffer(const MODEL_INFO* model_info, int node_index, API_TYPE api_type);
 
-int rknn_utils_init_input_buffer_all(MODEL_INFO* model_info, API_TYPE default_api_type);
-int rknn_utils_init_output_buffer_all(MODEL_INFO* model_info, API_TYPE default_api_type);
+int rknn_utils_init_input_buffer_all(const MODEL_INFO* model_info, API_TYPE default_api_type);
+int rknn_utils_init_output_buffer_all(const MODEL_INFO* model_info, API_TYPE default_api_type);
 
-int rknn_utils_release(MODEL_INFO* model_info);
+int rknn_utils_release(const MODEL_INFO* model_info);

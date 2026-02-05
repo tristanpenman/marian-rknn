@@ -15,10 +15,10 @@
 
 #pragma once
 
+#include <cstdint>
 #include <string>
 #include <unordered_map>
 
-#include <rknn_api.h>
 #include <sentencepiece_processor.h>
 
 #include "rknn_utils.h"
@@ -33,7 +33,7 @@ struct rknn_marian_lm_head_t
     float* Wt; // DxV row-major
     float* b;  // V
 
-    void operator()(const float* hidden, float* out_logits) const;
+    void operator()(const float* hidden, float* logits) const;
 };
 
 struct rknn_marian_rknn_context_t
@@ -43,8 +43,8 @@ struct rknn_marian_rknn_context_t
     sentencepiece::SentencePieceProcessor spm_tgt;
 
     // read from vocab file
-    std::unordered_map<std::string, int> vocab;
-    std::unordered_map<int, std::string> vocab_inv;
+    std::unordered_map<std::string, int32_t> vocab;
+    std::unordered_map<int32_t, std::string> vocab_inv;
 
     // rknn encoder and decoder
     MODEL_INFO enc;
@@ -54,11 +54,11 @@ struct rknn_marian_rknn_context_t
     rknn_marian_lm_head_t lm_head;
 
     // read from config file
-    int bos_token_id;
-    int eos_token_id;
-    int decoder_start_token_id;
-    int pad_token_id;
-    int unk_token_id;
+    int32_t bos_token_id;
+    int32_t eos_token_id;
+    int32_t decoder_start_token_id;
+    int32_t pad_token_id;
+    int32_t unk_token_id;
 
     // other constraints
     size_t enc_len;

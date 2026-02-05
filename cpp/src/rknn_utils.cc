@@ -78,29 +78,29 @@ int rknn_utils_query_model_info(MODEL_INFO* model_info)
     model_info->in_attr = (rknn_tensor_attr*)malloc(sizeof(rknn_tensor_attr) * model_info->n_input);
     model_info->in_attr_native = (rknn_tensor_attr*)malloc(sizeof(rknn_tensor_attr) * model_info->n_input);
     model_info->input_mem = (rknn_tensor_mem**)malloc(sizeof(rknn_tensor_mem*) * model_info->n_input);
-    model_info->rkdmo_input_param = (RKNN_UTILS_INPUT_PARAM*)malloc(sizeof(RKNN_UTILS_INPUT_PARAM) * model_info->n_input);
+    model_info->rknn_input_param = (RKNN_UTILS_INPUT_PARAM*)malloc(sizeof(RKNN_UTILS_INPUT_PARAM) * model_info->n_input);
 
     for (int i = 0; i < model_info->n_input; i++) {
         memset(&(model_info->inputs[i]), 0, sizeof(rknn_input));
-        memset(&(model_info->rkdmo_input_param[i]), 0, sizeof(RKNN_UTILS_INPUT_PARAM));
+        memset(&(model_info->rknn_input_param[i]), 0, sizeof(RKNN_UTILS_INPUT_PARAM));
     }
 
     model_info->outputs = (rknn_output*)malloc(sizeof(rknn_output) * model_info->n_output);
     model_info->out_attr = (rknn_tensor_attr*)malloc(sizeof(rknn_tensor_attr) * model_info->n_output);
     model_info->out_attr_native = (rknn_tensor_attr*)malloc(sizeof(rknn_tensor_attr) * model_info->n_output);
     model_info->output_mem = (rknn_tensor_mem**)malloc(sizeof(rknn_tensor_mem*) * model_info->n_output);
-    model_info->rkdmo_output_param = (RKNN_UTILS_OUTPUT_PARAM*)malloc(sizeof(RKNN_UTILS_OUTPUT_PARAM) * model_info->n_output);
+    model_info->rknn_output_param = (RKNN_UTILS_OUTPUT_PARAM*)malloc(sizeof(RKNN_UTILS_OUTPUT_PARAM) * model_info->n_output);
 
     for (int i = 0; i < model_info->n_output; i++) {
         memset(&(model_info->outputs[i]), 0, sizeof(rknn_output));
-        memset(&(model_info->rkdmo_output_param[i]), 0, sizeof(RKNN_UTILS_OUTPUT_PARAM));
+        memset(&(model_info->rknn_output_param[i]), 0, sizeof(RKNN_UTILS_OUTPUT_PARAM));
     }
 
 
     LOG(VERBOSE) << "INPUTS:";
     for (int i = 0; i < model_info->n_input; i++) {
         model_info->in_attr[i].index = i;
-        ret = rknn_query(model_info->ctx, RKNN_QUERY_INPUT_ATTR, &(model_info->in_attr[i]), sizeof(rknn_tensor_attr));
+        ret = rknn_query(model_info->ctx, RKNN_QUERY_INPUT_ATTR, &model_info->in_attr[i], sizeof(rknn_tensor_attr));
         if (ret != RKNN_SUCC) {
             LOG(ERROR) << "rknn_query failed. ret=" << ret;
             return -1;
@@ -113,7 +113,7 @@ int rknn_utils_query_model_info(MODEL_INFO* model_info)
     LOG(VERBOSE) << "OUTPUTS:";
     for (int i = 0; i < model_info->n_output; i++) {
         model_info->out_attr[i].index = i;
-        ret = rknn_query(model_info->ctx, RKNN_QUERY_OUTPUT_ATTR, &(model_info->out_attr[i]), sizeof(rknn_tensor_attr));
+        ret = rknn_query(model_info->ctx, RKNN_QUERY_OUTPUT_ATTR, &model_info->out_attr[i], sizeof(rknn_tensor_attr));
         if (ret != RKNN_SUCC) {
             LOG(ERROR) << "rknn_query failed. ret=" << ret;
             return -1;
@@ -134,7 +134,7 @@ int rknn_utils_query_model_info(MODEL_INFO* model_info)
     return 0;
 }
 
-int rknn_utils_get_type_size(rknn_tensor_type type)
+int rknn_utils_get_type_size(const rknn_tensor_type type)
 {
     switch (type)
     {
@@ -143,7 +143,6 @@ int rknn_utils_get_type_size(rknn_tensor_type type)
     case RKNN_TENSOR_FLOAT16:
         return 2;
     case RKNN_TENSOR_UINT8:
-        return 1;
     case RKNN_TENSOR_INT8:
         return 1;
     case RKNN_TENSOR_INT32:
@@ -162,12 +161,12 @@ int rknn_utils_init_input_buffer(
     const rknn_tensor_type dtype,
     const rknn_tensor_format layout_fmt)
 {
-    if (model_info->rkdmo_input_param[node_index]._already_init) {
+    if (model_info->rknn_input_param[node_index]._already_init) {
         LOG(ERROR) << "Model input buffer already initialized";
         return -1;
     }
-    model_info->rkdmo_input_param[node_index]._already_init = true;
-    model_info->rkdmo_input_param[node_index].api_type = api_type;
+    model_info->rknn_input_param[node_index]._already_init = true;
+    model_info->rknn_input_param[node_index].api_type = api_type;
     int elem_size = rknn_utils_get_type_size(dtype);
 
     if (api_type == NORMAL_API) {
@@ -208,14 +207,14 @@ int rknn_utils_init_input_buffer(
     return -1;
 }
 
-int rknn_utils_init_output_buffer(MODEL_INFO* model_info, int node_index, API_TYPE api_type)
+int rknn_utils_init_output_buffer(const MODEL_INFO* model_info, const int node_index, const API_TYPE api_type)
 {
-    if (model_info->rkdmo_output_param[node_index]._already_init) {
+    if (model_info->rknn_output_param[node_index]._already_init) {
         LOG(ERROR) << "Model output buffer already initialized";
         return -1;
     }
-    model_info->rkdmo_output_param[node_index]._already_init = true;
-    model_info->rkdmo_output_param[node_index].api_type = api_type;
+    model_info->rknn_output_param[node_index]._already_init = true;
+    model_info->rknn_output_param[node_index].api_type = api_type;
 
     if (api_type == NORMAL_API) {
         model_info->outputs[node_index].index = node_index;
@@ -230,30 +229,32 @@ int rknn_utils_init_output_buffer(MODEL_INFO* model_info, int node_index, API_TY
     return 0;
 }
 
-int rknn_utils_init_input_buffer_all(MODEL_INFO* model_info, API_TYPE default_api_type)
+int rknn_utils_init_input_buffer_all(const MODEL_INFO* model_info, const API_TYPE default_api_type)
 {
     rknn_tensor_format default_layout_fmt = RKNN_TENSOR_NHWC;
-    uint8_t default_pass_through = 0;
 
     for (int i = 0; i < model_info->n_input; i++) {
-        if (model_info->rkdmo_input_param[i]._already_init) {
+        if (model_info->rknn_input_param[i]._already_init) {
             LOG(WARNING) << "Model input buffer already init, ignore";
             continue;
         }
         int ret;
-        if (model_info->rkdmo_input_param[i].enable) {
+        if (model_info->rknn_input_param[i].enable) {
             ret = rknn_utils_init_input_buffer(model_info,
                                      i,
-                                     model_info->rkdmo_input_param[i].api_type,
-                                     model_info->rkdmo_input_param[i].pass_through,
-                                     model_info->rkdmo_input_param[i].dtype,
-                                     model_info->rkdmo_input_param[i].layout_fmt);
+                                     model_info->rknn_input_param[i].api_type,
+                                     model_info->rknn_input_param[i].pass_through,
+                                     model_info->rknn_input_param[i].dtype,
+                                     model_info->rknn_input_param[i].layout_fmt);
         } else {
+            constexpr uint8_t default_pass_through = 0;
             if (model_info->in_attr[i].n_dims==4) {
                 default_layout_fmt = model_info->in_attr[i].fmt;
             }
 
-            ret = rknn_utils_init_input_buffer(model_info, i, default_api_type, default_pass_through, model_info->in_attr[i].type, default_layout_fmt);
+            ret = rknn_utils_init_input_buffer(
+                model_info, i, default_api_type, default_pass_through,
+                model_info->in_attr[i].type, default_layout_fmt);
         }
         if (ret != 0) {
             return ret;
@@ -262,17 +263,17 @@ int rknn_utils_init_input_buffer_all(MODEL_INFO* model_info, API_TYPE default_ap
     return 0;
 }
 
-int rknn_utils_init_output_buffer_all(MODEL_INFO* model_info, API_TYPE default_api_type)
+int rknn_utils_init_output_buffer_all(const MODEL_INFO* model_info, const API_TYPE default_api_type)
 {
     for (int i = 0; i < model_info->n_output; i++) {
-        if (model_info->rkdmo_output_param[i]._already_init) {
+        if (model_info->rknn_output_param[i]._already_init) {
             LOG(WARNING) << "Model output buffer already init, ignore";
             continue;
         }
 
         int ret;
-        if (model_info->rkdmo_output_param[i].enable) {
-            ret = rknn_utils_init_output_buffer(model_info, i, model_info->rkdmo_output_param[i].api_type);
+        if (model_info->rknn_output_param[i].enable) {
+            ret = rknn_utils_init_output_buffer(model_info, i, model_info->rknn_output_param[i].api_type);
         } else {
             ret = rknn_utils_init_output_buffer(model_info, i, default_api_type);
         }
@@ -283,7 +284,7 @@ int rknn_utils_init_output_buffer_all(MODEL_INFO* model_info, API_TYPE default_a
     return 0;
 }
 
-int rknn_utils_reset_all_buffer(MODEL_INFO* model_info)
+int rknn_utils_reset_all_buffer(const MODEL_INFO* model_info)
 {
     for (int i = 0; i < model_info->n_input; i++) {
         if (model_info->input_mem[i] != nullptr) {
@@ -301,27 +302,27 @@ int rknn_utils_reset_all_buffer(MODEL_INFO* model_info)
     memset(model_info->in_attr, 0, sizeof(rknn_tensor_attr) * model_info->n_input);
     memset(model_info->in_attr_native, 0, sizeof(rknn_tensor_attr) * model_info->n_input);
     memset(model_info->input_mem, 0, sizeof(rknn_tensor_mem*) * model_info->n_input);
-    memset(model_info->rkdmo_input_param, 0, sizeof(RKNN_UTILS_INPUT_PARAM) * model_info->n_input);
+    memset(model_info->rknn_input_param, 0, sizeof(RKNN_UTILS_INPUT_PARAM) * model_info->n_input);
 
     memset(model_info->outputs, 0, sizeof(rknn_output) * model_info->n_output);
     memset(model_info->out_attr, 0, sizeof(rknn_tensor_attr) * model_info->n_output);
     memset(model_info->out_attr_native, 0, sizeof(rknn_tensor_attr) * model_info->n_output);
     memset(model_info->output_mem, 0, sizeof(rknn_tensor_mem*) * model_info->n_output);
-    memset(model_info->rkdmo_output_param, 0, sizeof(RKNN_UTILS_OUTPUT_PARAM) * model_info->n_output);
+    memset(model_info->rknn_output_param, 0, sizeof(RKNN_UTILS_OUTPUT_PARAM) * model_info->n_output);
 
     return 0;
 }
 
-int rknn_utils_release(MODEL_INFO* model_info)
+int rknn_utils_release(const MODEL_INFO* model_info)
 {
     for (int i = 0; i < model_info->n_input; i++) {
-        if (model_info->rkdmo_input_param[i].api_type == ZERO_COPY_API) {
+        if (model_info->rknn_input_param[i].api_type == ZERO_COPY_API) {
             rknn_destroy_mem(model_info->ctx, model_info->input_mem[i]);
         }
     }
 
     for (int i = 0; i < model_info->n_output; i++) {
-        if (model_info->rkdmo_output_param[i].api_type == ZERO_COPY_API) {
+        if (model_info->rknn_output_param[i].api_type == ZERO_COPY_API) {
             rknn_destroy_mem(model_info->ctx, model_info->output_mem[i]);
         }
     }
@@ -341,13 +342,13 @@ int rknn_utils_release(MODEL_INFO* model_info)
     free(model_info->in_attr);
     free(model_info->in_attr_native);
     free(model_info->input_mem);
-    free(model_info->rkdmo_input_param);
+    free(model_info->rknn_input_param);
 
     free(model_info->outputs);
     free(model_info->out_attr);
     free(model_info->out_attr_native);
     free(model_info->output_mem);
-    free(model_info->rkdmo_output_param);
+    free(model_info->rknn_output_param);
 
     return 0;
 }

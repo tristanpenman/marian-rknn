@@ -171,10 +171,6 @@ int rknn_nmt_process(
 {
     int ret = 0;
 
-    // attention mask
-    std::vector<int32_t> attention_mask;
-    attention_mask.resize(app_ctx->enc_len, 0);
-
     // count tokens
     int input_token_give = 0;
     for (int i=0; i<app_ctx->enc_len; i++) {
@@ -188,6 +184,8 @@ int rknn_nmt_process(
     LOG(VERBOSE) << "Tokens given: " << input_token_give;
     std::vector<int32_t> input_token_sorted;
     input_token_sorted.resize(app_ctx->enc_len, 0);
+    std::ostringstream token_stream;
+    token_stream << "Token stream: ";
     for (int i = 0; i < app_ctx->enc_len; i++) {
         if (i < input_token_give) {
             // copy original token
@@ -199,9 +197,13 @@ int rknn_nmt_process(
             // all other characters are <pad> tokens
             input_token_sorted[i] = app_ctx->pad_token_id;
         }
+        token_stream << std::to_string(input_token_sorted[i]) << " ";
     }
+    LOG(VERBOSE) << token_stream.str();
 
     // attention mask includes 1s for kept tokens, 0s for masked tokens
+    std::vector<int32_t> attention_mask;
+    attention_mask.resize(app_ctx->enc_len, 0);
     std::ostringstream mask_stream;
     mask_stream << "Generate attention mask:";
     bool padding = false;
@@ -260,13 +262,13 @@ int rknn_nmt_process(
     return greedy_decode(app_ctx, output_token);
 }
 
-int get_sequence_length(const rknn_tensor_attr& attr, const char* label)
+size_t get_sequence_length(const rknn_tensor_attr& attr, const char* label)
 {
     if (attr.n_dims < 2) {
         LOG(ERROR) << label << " has insufficient dims: " << attr.n_dims;
         return -1;
     }
-    return static_cast<int>(attr.dims[1]);
+    return attr.dims[1];
 }
 
 bool validate_equal_length(const size_t lhs, const size_t rhs, const char* lhs_label, const char* rhs_label)
@@ -281,19 +283,19 @@ bool validate_equal_length(const size_t lhs, const size_t rhs, const char* lhs_l
 
 int validate_sequence_lengths(const rknn_marian_rknn_context_t* app_ctx)
 {
-    const int enc_mask_len = get_sequence_length(app_ctx->enc.in_attr[ENC_IN_ATTENTION_MASK_IDX], "encoder attention_mask");
+    const auto enc_mask_len = get_sequence_length(app_ctx->enc.in_attr[ENC_IN_ATTENTION_MASK_IDX], "encoder attention_mask");
     LOG(VERBOSE) << "Encoder mask len: " << enc_mask_len;
     if (!validate_equal_length(app_ctx->enc_len, enc_mask_len, "encoder input_ids", "encoder attention_mask")) {
         return -1;
     }
 
-    const int dec_mask_len = get_sequence_length(app_ctx->dec.in_attr[DEC_IN_ATTENTION_MASK_IDX], "decoder attention_mask");
+    const auto dec_mask_len = get_sequence_length(app_ctx->dec.in_attr[DEC_IN_ATTENTION_MASK_IDX], "decoder attention_mask");
     LOG(VERBOSE) << "Decoder mask len: " << dec_mask_len;
     if (!validate_equal_length(app_ctx->dec_len, dec_mask_len, "decoder input_ids", "decoder attention_mask")) {
         return -1;
     }
 
-    int dec_hidden_len = get_sequence_length(app_ctx->dec.in_attr[DEC_IN_ENCODER_HIDDEN_STATES], "decoder encoder_hidden_states");
+    const size_t dec_hidden_len = get_sequence_length(app_ctx->dec.in_attr[DEC_IN_ENCODER_HIDDEN_STATES], "decoder encoder_hidden_states");
     LOG(VERBOSE) << "Decoder hidden len: " << dec_hidden_len;
     if (dec_hidden_len <= 0) {
         return -1;
@@ -525,13 +527,7 @@ int inference_marian_rknn_model(
     const std::string &input_sentence,
     std::string &output_sentence)
 {
-    // TODO: Remove magic number
-    int token_list[100];
-    size_t token_list_len = 0;
-    memset(token_list, 0, sizeof(token_list));
-
     // encode tokens
-    std::vector<int> encoded_tokens;
     auto pieces = app_ctx->spm_src.EncodeAsPieces(input_sentence);
     std::ostringstream pieces_stream;
     pieces_stream << "sentence pieces:";
@@ -542,7 +538,8 @@ int inference_marian_rknn_model(
 
     // apply vocab mapping
     LOG(VERBOSE) << "Apply vocab mapping";
-    encoded_tokens.reserve(pieces.size());
+    std::vector<int32_t> encoded_tokens;
+    encoded_tokens.reserve(app_ctx->enc_len);
     for (const auto& piece : pieces) {
         if (auto itr = app_ctx->vocab.find(piece); itr == app_ctx->vocab.end()) {
             // unknown token
@@ -552,50 +549,30 @@ int inference_marian_rknn_model(
         }
     }
 
-    // copy and truncate tokens
-    token_list_len = encoded_tokens.size();
-    if (token_list_len > sizeof(token_list) / sizeof(int)) {
-        LOG(WARNING) << "Too many tokens (" << token_list_len << "), truncating to " << sizeof(token_list) / sizeof(int);
-        token_list_len = sizeof(token_list) / sizeof(int);
-    }
-    for (int i = 0; i < token_list_len; ++i) {
-        token_list[i] = encoded_tokens[i];
+    // check input length
+    if (encoded_tokens.size() > app_ctx->enc_len) {
+        LOG(INFO) << "Received " << encoded_tokens.size() << " tokens, truncating to " << app_ctx->enc_len;
+    } else if (encoded_tokens.size() < app_ctx->enc_len) {
+        LOG(INFO) << "Received " << encoded_tokens.size() << " tokens, padding to " << app_ctx->enc_len;
     }
 
-    // check input length
-    if (uint32_t max_input_len = app_ctx->enc_len; token_list_len > max_input_len) {
-        LOG(WARNING) << "token_len(" << token_list_len << ") > max_input_len(" << max_input_len
-                     << "), only keep " << max_input_len << " tokens!";
-        std::ostringstream tokens_all;
-        tokens_all << "Tokens all     :";
-        for (int i = 0; i < token_list_len; i++) {
-            tokens_all << " " << token_list[i];
-        }
-        LOG(VERBOSE) << tokens_all.str();
-        token_list_len = max_input_len;
-        std::ostringstream tokens_remains;
-        tokens_remains << "Tokens remains :";
-        for (int i = 0; i < token_list_len; i++) {
-            tokens_remains << " " << token_list[i];
-        }
-        LOG(VERBOSE) << tokens_remains.str();
-    }
+    // resize and pad if necessary
+    encoded_tokens.resize(app_ctx->enc_len, app_ctx->pad_token_id);
 
     // run model
-    std::vector<int32_t> output_token;
-    output_token.resize(app_ctx->dec_len, 0);
-    int output_len = 0;
-    output_len = rknn_nmt_process(app_ctx, token_list, output_token.data());
+    std::vector<int32_t> output_tokens;
+    output_tokens.resize(app_ctx->dec_len, 0);
+    int output_len = rknn_nmt_process(app_ctx, encoded_tokens.data(), output_tokens.data());
 
     // prepare tokens for decode
     LOG(VERBOSE) << "reverse vocab mapping";
     std::vector<std::string> decode_tokens;
     for (int i = 0; i < output_len; ++i) {
-        if (output_token[i] == app_ctx->eos_token_id || output_token[i] == app_ctx->pad_token_id || output_token[i] <= 0) {
+        if (output_tokens[i] == app_ctx->eos_token_id || output_tokens[i] == app_ctx->pad_token_id || output_tokens[i] <= 0) {
             break;
         }
-        if (auto entry = app_ctx->vocab_inv.find(output_token[i]); entry == app_ctx->vocab_inv.end()) {
-            LOG(WARNING) << "Token not found: " << output_token[i];
+        if (auto entry = app_ctx->vocab_inv.find(output_tokens[i]); entry == app_ctx->vocab_inv.end()) {
+            LOG(WARNING) << "Token not found: " << output_tokens[i];
         } else {
             decode_tokens.push_back(entry->second);
         }
