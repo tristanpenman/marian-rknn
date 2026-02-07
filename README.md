@@ -25,6 +25,7 @@ This repo contains an implementation of MarianMT that runs on Rockchip NPU (RKNN
 * [Native Implementation](#native-implementation)
   * [Cross-Compilation](#cross-compilation)
   * [Release Builds](#release-builds)
+  * [Benchmarking](#benchmarking)
 * [License](#license)
 
 ## Background
@@ -447,6 +448,20 @@ Alternatively, you can produce a `RelWithDebInfo` build. This will have `-O2` op
 
 ```bash
 cmake -DCMAKE_BUILD_TYPE=RelWithDebInfo ..
+```
+
+### Benchmarking
+
+The benchmark binary is built alongside the main executable and can be copied in the same way:
+
+```bash
+scp marian-rknn-benchmark <edge2-ip>:~
+```
+
+You can run the benchmark by passing a model directory, an input text file, and a max runtime in seconds:
+
+```bash
+./marian-rknn-benchmark /path/to/model inputs.txt 30
 ```
 
 ## License

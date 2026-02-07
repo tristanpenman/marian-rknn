@@ -65,8 +65,41 @@ struct rknn_marian_rknn_context_t
     size_t dec_len;
 };
 
+struct rknn_marian_inference_stats_t
+{
+    double total_ms = 0.0;
+    double encoder_ms = 0.0;
+    double decoder_ms = 0.0;
+    double lm_head_ms = 0.0;
+    size_t decoder_iterations = 0;
+    size_t input_tokens = 0;
+    size_t output_tokens = 0;
+
+    void reset()
+    {
+        total_ms = 0.0;
+        encoder_ms = 0.0;
+        decoder_ms = 0.0;
+        lm_head_ms = 0.0;
+        decoder_iterations = 0;
+        input_tokens = 0;
+        output_tokens = 0;
+    }
+
+    void accumulate(const rknn_marian_inference_stats_t& other)
+    {
+        total_ms += other.total_ms;
+        encoder_ms += other.encoder_ms;
+        decoder_ms += other.decoder_ms;
+        lm_head_ms += other.lm_head_ms;
+        decoder_iterations += other.decoder_iterations;
+        input_tokens += other.input_tokens;
+        output_tokens += other.output_tokens;
+    }
+};
+
 int init_marian_rknn_model(
-    const char *model_dir,
+    const std::string &model_dir,
     rknn_marian_rknn_context_t *app_ctx);
 
 int release_marian_rknn_model(
@@ -76,3 +109,9 @@ int inference_marian_rknn_model(
     rknn_marian_rknn_context_t* app_ctx,
     const std::string &input_sentence,
     std::string &output_sentence);
+
+int inference_marian_rknn_model(
+    rknn_marian_rknn_context_t* app_ctx,
+    const std::string &input_sentence,
+    std::string &output_sentence,
+    rknn_marian_inference_stats_t* stats);

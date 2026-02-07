@@ -107,6 +107,29 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     ${LIBTIMER_INCLUDES}
 )
 
+add_executable(${PROJECT_NAME}-benchmark
+    src/benchmark.cc
+    src/file_utils.cc
+    src/logger.cc
+    src/marian_rknn.cc
+    src/rknn_utils.cc
+)
+
+target_link_libraries(${PROJECT_NAME}-benchmark PRIVATE
+    ${LIBRKNNRT}
+    dl
+    Eigen3::Eigen
+    nlohmann_json::nlohmann_json
+    sentencepiece
+)
+
+target_include_directories(${PROJECT_NAME}-benchmark PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${LIBRKNNRT_INCLUDES}
+    ${LIBSENTENCEPIECE_INCLUDES}
+    ${LIBTIMER_INCLUDES}
+)
+
 if(BUILD_TESTING)
     add_executable(${PROJECT_NAME}-tests
         tests/file_utils_test.cc

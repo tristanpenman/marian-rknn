@@ -14,6 +14,7 @@
 // limitations under the License.
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <fstream>
 #include <sstream>
@@ -33,6 +34,7 @@
 #include "logger.h"
 #include "marian_rknn.h"
 #include "rknn_utils.h"
+#include "time_utils.h"
 #include "type_half.h"
 
 using json = nlohmann::json;
@@ -69,7 +71,8 @@ namespace {
 
 int greedy_decode(
     rknn_marian_rknn_context_t* app_ctx,
-    int32_t* output_token)
+    int32_t* output_token,
+    rknn_marian_inference_stats_t* stats)
 {
     int ret = 0;
 
@@ -98,12 +101,17 @@ int greedy_decode(
         );
 
         LOG(VERBOSE) << "rknn_run";
+        auto run_start = std::chrono::steady_clock::now();
         timer.tik();
         ret = rknn_run(app_ctx->dec.ctx, nullptr);
         timer.tok();
+        auto run_end = std::chrono::steady_clock::now();
         if (ret < 0) {
             LOG(ERROR) << "rknn_run failed. ret=" << ret;
             return -1;
+        }
+        if (stats) {
+            stats->decoder_ms += elapsed_ms(run_start, run_end);
         }
 
         LOG(VERBOSE) << "Convert fp16 to fp32";
@@ -114,12 +122,17 @@ int greedy_decode(
         }
 
         LOG(VERBOSE) << "Apply LM head";
+        auto lm_start = std::chrono::steady_clock::now();
         std::vector<float> logits;
         logits.resize(app_ctx->lm_head.V);
         app_ctx->lm_head(
             output_floats.data(),
             logits.data()
         );
+        auto lm_end = std::chrono::steady_clock::now();
+        if (stats) {
+            stats->lm_head_ms += elapsed_ms(lm_start, lm_end);
+        }
 
         LOG(VERBOSE) << "Argmax:";
         int max = 0;
@@ -161,13 +174,19 @@ int greedy_decode(
     LOG(VERBOSE) << "Decoder run " << output_len - 1 << " times";
     timer_total.print_time("Total time");
 
+    if (stats) {
+        stats->decoder_iterations += static_cast<size_t>(output_len > 0 ? output_len - 1 : 0);
+        stats->output_tokens += static_cast<size_t>(output_len);
+    }
+
     return output_len;
 }
 
 int rknn_nmt_process(
     rknn_marian_rknn_context_t* app_ctx,
     const int32_t* input_token,
-    int32_t* output_token)
+    int32_t* output_token,
+    rknn_marian_inference_stats_t* stats)
 {
     int ret = 0;
 
@@ -178,6 +197,9 @@ int rknn_nmt_process(
             break;
         }
         input_token_give++;
+    }
+    if (stats) {
+        stats->input_tokens = static_cast<size_t>(input_token_give);
     }
 
     // replace trailing tokens with eos, then pad tokens
@@ -236,6 +258,7 @@ int rknn_nmt_process(
 
     LOG(VERBOSE) << "Run encoder";
     TIMER timer;
+    auto enc_start = std::chrono::steady_clock::now();
     timer.tik();
     ret = rknn_run(app_ctx->enc.ctx, nullptr);
     if (ret < 0) {
@@ -243,6 +266,10 @@ int rknn_nmt_process(
         return -1;
     }
     timer.tok();
+    auto enc_end = std::chrono::steady_clock::now();
+    if (stats) {
+        stats->encoder_ms += elapsed_ms(enc_start, enc_end);
+    }
     timer.print_time("RKNN encoder run");
 
     LOG(VERBOSE) << "Copy output from encoder to decoder";
@@ -259,7 +286,7 @@ int rknn_nmt_process(
         app_ctx->dec.in_attr[DEC_IN_ATTENTION_MASK_IDX].size
     );
 
-    return greedy_decode(app_ctx, output_token);
+    return greedy_decode(app_ctx, output_token, stats);
 }
 
 size_t get_sequence_length(const rknn_tensor_attr& attr, const char* label)
@@ -320,18 +347,18 @@ int validate_sequence_lengths(const rknn_marian_rknn_context_t* app_ctx)
 
 }  // namespace
 
-int init_marian_rknn_model(const char *model_dir, rknn_marian_rknn_context_t *app_ctx)
+int init_marian_rknn_model(const std::string &model_dir, rknn_marian_rknn_context_t *app_ctx)
 {
     int ret = 0;
 
-    std::string config_path = join_path(model_dir, "config.json");
-    std::string encoder_path = join_path(model_dir, "encoder.rknn");
-    std::string decoder_path = join_path(model_dir, "decoder.rknn");
-    std::string source_spm_path = join_path(model_dir, "source.spm");
-    std::string target_spm_path = join_path(model_dir, "target.spm");
-    std::string vocab_path = join_path(model_dir, "vocab.json");
-    std::string lm_weight_path = join_path(model_dir, "lm_weight.raw");
-    std::string lm_bias_path = join_path(model_dir, "lm_bias.raw");
+    const auto config_path = join_path(model_dir, "config.json");
+    const auto encoder_path = join_path(model_dir, "encoder.rknn");
+    const auto decoder_path = join_path(model_dir, "decoder.rknn");
+    const auto source_spm_path = join_path(model_dir, "source.spm");
+    const auto target_spm_path = join_path(model_dir, "target.spm");
+    const auto vocab_path = join_path(model_dir, "vocab.json");
+    const auto lm_weight_path = join_path(model_dir, "lm_weight.raw");
+    const auto lm_bias_path = join_path(model_dir, "lm_bias.raw");
 
     LOG(INFO) << "Load config " << config_path;
     std::ifstream config_file(config_path);
@@ -527,6 +554,17 @@ int inference_marian_rknn_model(
     const std::string &input_sentence,
     std::string &output_sentence)
 {
+    return inference_marian_rknn_model(app_ctx, input_sentence, output_sentence, nullptr);
+}
+
+int inference_marian_rknn_model(
+    rknn_marian_rknn_context_t* app_ctx,
+    const std::string &input_sentence,
+    std::string &output_sentence,
+    rknn_marian_inference_stats_t* stats)
+{
+    auto total_start = std::chrono::steady_clock::now();
+
     // encode tokens
     auto pieces = app_ctx->spm_src.EncodeAsPieces(input_sentence);
     std::ostringstream pieces_stream;
@@ -562,7 +600,7 @@ int inference_marian_rknn_model(
     // run model
     std::vector<int32_t> output_tokens;
     output_tokens.resize(app_ctx->dec_len, 0);
-    int output_len = rknn_nmt_process(app_ctx, encoded_tokens.data(), output_tokens.data());
+    int output_len = rknn_nmt_process(app_ctx, encoded_tokens.data(), output_tokens.data(), stats);
 
     // prepare tokens for decode
     LOG(VERBOSE) << "reverse vocab mapping";
@@ -583,6 +621,11 @@ int inference_marian_rknn_model(
     if (auto status = app_ctx->spm_tgt.Decode(decode_tokens, &output_sentence); !status.ok()) {
         LOG(ERROR) << "Sentencepiece decode failed: " << status.ToString();
         return -1;
+    }
+
+    auto total_end = std::chrono::steady_clock::now();
+    if (stats) {
+        stats->total_ms += elapsed_ms(total_start, total_end);
     }
 
     return 0;
