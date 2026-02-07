@@ -26,11 +26,11 @@ struct RKNN_UTILS_INPUT_PARAM
             enable to assign if this param was used
             _already_init to record if this param was already init
     */
-    uint8_t pass_through;
-    rknn_tensor_format layout_fmt;
-    rknn_tensor_type dtype;
+    uint8_t pass_through{};
+    rknn_tensor_format layout_fmt{};
+    rknn_tensor_type dtype{};
 
-    API_TYPE api_type;
+    API_TYPE api_type = NORMAL_API;
     bool enable = false;
     bool _already_init = false;
 };
