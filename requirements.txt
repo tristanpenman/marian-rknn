@@ -4,6 +4,7 @@ onnxruntime~=1.22.0
 pylint~=4.0.4
 requests~=2.32.4
 rknn-toolkit2==2.3.2
+sacrebleu~=2.4.0
 sentencepiece~=0.2.0
 torch~=2.4.0
 transformers==4.36.2
