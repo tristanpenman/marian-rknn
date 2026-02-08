@@ -1,3 +1,4 @@
 rknn-toolkit-lite2==2.3.2
+sacrebleu==2.4.0
 sentencepiece==0.2.1
 setuptools==70.1.1
