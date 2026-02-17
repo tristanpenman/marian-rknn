@@ -52,12 +52,17 @@ Hugging Face hosts the official MarianMT checkpoints, tokenizers, and configurat
 
 ### Preflight
 
-The script `preflight.py` can be used to check that your system can run a pretrained model from Hugging Face. You can choose a device (e.g. CUDA) using the `--device <type>` argument, and a specific model using `--model-name <id>`.
+The `preflight.py` script can be used to check that your system can download and run a pretrained model from Hugging Face. You can choose a device (e.g. CUDA) using the `--device <type>` argument, and a specific model using `--model-name <id>`.
 
-For example, to download English-to-French model and run it on a CUDA device:
+For example, to download an _OPUS MT English-to-French model_ and run it on a CUDA device:
+
+```bash
+python scripts/preflight.py --device cuda --model-name Helsinki-NLP/opus-mt-en-fr
+```
+
+After downloading the model, this will drop you in a prompt where you can enter English text, which will then be translated to French:
 
 ```
-$ python scripts/preflight.py --device cuda --model-name Helsinki-NLP/opus-mt-en-fr
 Using device: cuda
 Using model: Helsinki-NLP/opus-mt-en-fr
 Enter text to translate (empty line to quit):
@@ -70,7 +75,7 @@ Je suis un poisson
 
 Dependencies can be installed using `pip`:
 
-```
+```bash
 pip install -r requirements.txt
 ```
 
@@ -78,18 +83,19 @@ This includes dependencies for scripts in submodules too.
 
 ### Docker (CPU-only preflight)
 
-A lightweight Docker image is provided for testing MarianMT on systems without a GPU. The container uses a CPU-only PyTorch build to maximise compatibility.
+A lightweight Docker image has been provided for testing MarianMT on systems _without_ a GPU. The container uses a CPU-only PyTorch build to maximise compatibility.
 
 Build the image from the repository root:
 
 ```bash
-docker build -f Dockerfile -t marian-rknn-preflight .
+docker build -f Dockerfile -t marian-rknn .
 ```
 
 You can then run the preflight check inside the container:
 
 ```bash
-docker run --rm -it marian-rknn-preflight -v "$PWD:/workspace" python scripts/preflight.py --device cpu --model-name Helsinki-NLP/opus-mt-en-fr
+docker run --rm -it marian-rknn -v "$PWD:/workspace" \
+  python scripts/preflight.py --device cpu --model-name Helsinki-NLP/opus-mt-en-fr
 ```
 
 ### Docker Compose
@@ -100,27 +106,32 @@ For an even easier time, you can use Docker Compose:
 docker compose run --build marian-rknn
 ```
 
-This will automatically run the preflight script, and drop you into the interactive translator.
+When the command is omitted this will automatically run the preflight script, and drop you into the interactive translator.
 
 The same Docker Compose command can be used to run arbitrary scripts inside the container, or even just to load a bash shell:
 
 ```bash
-docker compose run --build marian-rknn /bin/bash
+docker compose run --rm --build marian-rknn /bin/bash
 ```
+
+> ![NOTE]
+> All of the commands listed below can be run within this shell.
 
 ## Conversion
 
-After validating a model locally using the `preflight.py` script, you can export the weights to ONNX, feed them into the RKNN conversion pipeline, and package the resulting artifacts for deployment on Rockchip devices.
+After validating a model locally using the `preflight.py` script, you're ready to export the weights to ONNX, feed them into the RKNN conversion pipeline, and package the resulting artifacts for deployment on Rockchip devices.
 
 ### Get Model Path
 
-```
+We'll need to find out where the `preflight.py` script downloaded the model:
+
+```bash
 python -c "from huggingface_hub import snapshot_download; print(snapshot_download('Helsinki-NLP/opus-mt-en-fr'))"
 ```
 
 The output will look something like this:
 
-```
+```bash
 /workspace/.cache/huggingface/hub/models--Helsinki-NLP--opus-mt-en-fr/snapshots/dd7f6540a7a48a7f4db59e5c0b9c42c8eea67f18
 ```
 
@@ -128,7 +139,15 @@ This is the local path to the model.
 
 ### Export to ONNX
 
-The [Marian-ONNX-Converter](./Marian-ONNX-Converter) submodule contains an ONNX implementation of Marian. This includes a conversion script that allows pretrained models from Hugging Face to be converted to ONNX format.
+The [Marian-ONNX-Converter](./Marian-ONNX-Converter) submodule contains an ONNX implementation of Marian. This includes a script for converting pretrained models from Hugging Face to ONNX format.
+
+If you haven't already, initialise the submodule:
+
+```bash
+git submodule update --init Marian-ONNX-Converter
+```
+
+You should be able to run the `convert.py` script without installing any additional dependencies:
 
 ```bash
 python Marian-ONNX-Converter/convert.py
@@ -137,7 +156,6 @@ python Marian-ONNX-Converter/convert.py
 This will prompt you to provide an input file, an optionally a path for an output:
 
 ```bash
-$ python Marian-ONNX-Converter/convert.py
 usage: convert.py [-h] [-o OUTPUT] [--no-quantize] input
 convert.py: error: the following arguments are required: input
 ```
@@ -150,9 +168,9 @@ python Marian-ONNX-Converter/convert.py \
   --no-quantize
 ```
 
-It's very important to specify `--no-quantize`. Failure to do so will produce a model graph that contains layers/operations that are not supported by RKNN.
+It's very important to specify `--no-quantize`. Failure to do so will produce a model graph that contains layers/operations that are not supported by RKNN. Quantization will be handled later, when converting to RKNN.
 
-While converting / exporting, the output will look like this:
+The output of `convert.py` will look like this:
 
 ```
 Exporting encoder to ONNX...
@@ -164,14 +182,14 @@ Creating archive file...
 Done.
 ```
 
-The ONNX-format encoder/decoder will be written to `outs/<model-name>`:
+The ONNX-format encoder and decoder will be written to `outs/<model-name>`:
 
 ```
 $ ls -l
 total 227860
 -rw-r--r-- 1 root root      1416 Oct 16 12:10 config.json
--rw-r--r-- 1 root root  56780822 Oct 16 12:10 decoder.onnx
--rw-r--r-- 1 root root  50146129 Oct 16 12:10 encoder.onnx
+-rw-r--r-- 1 root root  56780822 Oct 16 12:10 decoder.onnx        <--
+-rw-r--r-- 1 root root  50146129 Oct 16 12:10 encoder.onnx        <--
 -rw-r--r-- 1 root root    239196 Oct 16 12:10 lm_bias.bin
 -rw-r--r-- 1 root root 121885926 Oct 16 12:10 lm_weight.bin
 -rw-r--r-- 1 root root    778395 Oct 16 12:10 source.spm
@@ -180,11 +198,11 @@ total 227860
 -rw-r--r-- 1 root root   1339166 Oct 16 12:10 vocab.json
 ```
 
-In the next step, we will convert `decoder.onnx`, `encoder.onnx`, `lm_bias.bin` and `lm_weight.bin` into formats that can be used by our C++ RKNN implementation.
+We will later convert `decoder.onnx`, `encoder.onnx`, `lm_bias.bin` and `lm_weight.bin` into formats that can be used by our C++ RKNN implementation.
 
 ### Verify ONNX
 
-Before proceeding any further, we should verify that the ONNX models work correctly:
+Before proceeding any further, we should verify that the ONNX models work correctly, using the `test.py` script:
 
 ```bash
 python Marian-ONNX-Converter/test.py \
@@ -201,12 +219,10 @@ Je suis un poisson
 
 ### ONNX to RKNN
 
-Now we can convert the encoder and decoder from ONNX to RKNN. We can use [convert.py](scripts/convert.py).
-
-Start by converting the encoder:
+Now we can convert the encoder and decoder from ONNX to RKNN. We can use our own [rknn_convert.py](scripts/rknn_convert.py) script for this, passing in the same model output path from earlier:
 
 ```bash
-python scripts/convert.py \
+python scripts/rknn_convert.py \
   outs/dd7f6540a7a48a7f4db59e5c0b9c42c8eea67f18 rk3588
 ```
 
@@ -281,14 +297,14 @@ Converting LM weights...
 Converting LM biases...
 ```
 
-Once conversion is complete, a simulator will be started.
+Once conversion is complete, a simulator will be started. Look for these lines specifically:
 
 ```
 I Target is None, use simulator!
 I Target is None, use simulator!
 ```
 
-This can be used to input individual strings to be translated:
+This will also drop you into a prompt where you can input individual strings to be translated:
 
 ```
 Enter text to translate (empty line to quit):
@@ -305,19 +321,21 @@ Je suis un poisson
 >
 ```
 
+This is enough to confirm that the model is working.
+
 ## Inference
 
 To run the model on your Rockchip device, you will need to install some dependencies and copy across the converted model files.
 
 ### Dependencies
 
-It is recommended that you install Python dependencies in Python virtual environment. Start by creating the environment:
+It is recommended that you install Python dependencies in Python virtual environment on the Rockchip device. Start by creating the environment:
 
 ```bash
 python3 -m venv venv
 ```
 
-Then you can activate it like so:
+Be sure to also _activate_ it:
 
 ```bash
 source venv/bin/activate
@@ -329,7 +347,7 @@ Now you can install other packages using `pip`:
 pip install -r requirements.lite.txt
 ```
 
-The main dependency here is [RKNN Toolkit Lite](https://github.com/rockchip-linux/rknn-toolkit/tree/master/rknn-toolkit-lite), which is a trimmed down version of the RKNN Toolkit with individual device / NPU support added.
+The most important dependency here is [RKNN Toolkit Lite](https://github.com/rockchip-linux/rknn-toolkit/tree/master/rknn-toolkit-lite) - a trimmed down version of the RKNN Toolkit with individual device / NPU support added.
 
 ### Model Outputs
 
@@ -341,21 +359,23 @@ scp -r outs <edge2-ip>:~
 
 ### Show Time!
 
-You can now run the inference script:
+You can now run the inference script on the Rockchip device:
 
 ```bash
-python scripts/infer.py
+python scripts/rknn_infer.py
 ```
 
 When no arguments are provided, this script will simply print out usage information:
 
 ```
-usage: infer.py [-h] [--beam-search] [--beam-depth BEAM_DEPTH] [--beam-width BEAM_WIDTH] model_path [inputs ...]
-infer.py: error: the following arguments are required: model_path, inputs
+usage: rknn_infer.py [-h] [--beam-search] [--beam-depth BEAM_DEPTH] [--beam-width BEAM_WIDTH] model_path [inputs ...]
+rknn_infer.py: error: the following arguments are required: model_path, inputs
 ```
 
+We'll just use the model output files that we copied above:
+
 ```bash
-python scripts/infer.py outs/dd7f6540a7a48a7f4db59e5c0b9c42c8eea67f18
+python scripts/rknn_infer.py ~/outs/dd7f6540a7a48a7f4db59e5c0b9c42c8eea67f18
 ```
 
 While loading, the output should look something like this:
@@ -388,12 +408,12 @@ Je suis un poisson
 
 ### Beam Search
 
-The last thing worth mentioning is support for [Beam Search](https://en.wikipedia.org/wiki/Beam_search). The default behaviour of the inference script is to use Greedy Search, which simply consumes tokens as they are generated. Beam Search is an alternative that allows multiple paths to be explored iteratively. Although it can be a little slower, it can be lead to higher quality outputs.
+The last thing worth mentioning is support for [Beam Search](https://en.wikipedia.org/wiki/Beam_search). The default behaviour of the inference script is to use Greedy Decoding, which simply consumes tokens as they are generated. Beam Search is an alternative that allows multiple paths to be explored iteratively. Although it is a little slower, it can be lead to higher quality outputs.
 
 This can enabled using the `--beam-search` option. The beam depth and beam width can also be configured using command line arguments:
 
 ```bash
-python scripts/infer.py --beam-search --beam-width 3 outs/dd7f6540a7a48a7f4db59e5c0b9c42c8eea67f18
+python scripts/rknn_infer.py --beam-search --beam-width 3 outs/dd7f6540a7a48a7f4db59e5c0b9c42c8eea67f18
 ```
 
 ## License

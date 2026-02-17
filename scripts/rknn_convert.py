@@ -4,7 +4,7 @@ import argparse
 import torch
 import numpy as np
 
-from infer import inference, load_config, DEFAULT_DEC_LEN, DEFAULT_ENC_LEN
+from rknn_infer import inference, load_config, DEFAULT_DEC_LEN, DEFAULT_ENC_LEN
 
 from rknn.api import RKNN
 
