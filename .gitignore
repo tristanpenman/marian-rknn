@@ -1,5 +1,9 @@
 .cache
 .python-version
 __pycache__
+build
 cache
+CMakeFiles
+CMakeCache.txt
+models/*
 outs

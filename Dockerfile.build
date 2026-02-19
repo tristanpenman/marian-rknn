@@ -1,0 +1,31 @@
+# check=skip=FromPlatformFlagConstDisallowed
+
+FROM --platform=linux/amd64 debian:trixie-slim@sha256:e711a7b30ec1261130d0a121050b4ed81d7fb28aeabcf4ea0c7876d4e9f5aca2
+
+ENV DEBIAN_FRONTEND="noninteractive"
+
+# Install system CA certificates
+RUN apt-get update \
+    && apt-get -y install --no-install-recommends \
+        ca-certificates \
+        cmake \
+        curl \
+        git \
+        make \
+        xz-utils \
+    && apt-get clean
+
+# Extract toolchain
+RUN mkdir -p /opt/toolchains \
+    && curl https://huggingface.co/csukuangfj/sherpa-ncnn-toolchains/resolve/main/gcc-linaro-7.5.0-2019.12-x86_64_aarch64-linux-gnu.tar.xz -LOsS \
+    && tar -xf gcc-linaro-7.5.0-2019.12-x86_64_aarch64-linux-gnu.tar.xz -C /opt/toolchains \
+    && rm gcc-linaro-7.5.0-2019.12-x86_64_aarch64-linux-gnu.tar.xz
+
+# Environment
+ENV GCC_COMPILER=aarch64-linux-gnu
+ENV GCC_COMPILER_PATH=/opt/toolchains/gcc-linaro-7.5.0-2019.12-x86_64_aarch64-linux-gnu/bin
+ENV PATH=${GCC_COMPILER_PATH}:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+ENV CC=${GCC_COMPILER}-gcc
+ENV CXX=${GCC_COMPILER}-g++
+
+WORKDIR /workspace

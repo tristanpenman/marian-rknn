@@ -22,7 +22,11 @@ This repo contains an implementation of MarianMT that runs on Rockchip NPU (RKNN
   * [Model Output](#model-output)
   * [Show Time!](#show-time)
   * [Beam Search](#beam-search)
-* [Benchmarking](#benchmarking)
+  * [Benchmarking](#benchmarking)
+* [Native Implementation](#native-implementation)
+  * [Cross-Compilation](#cross-compilation)
+  * [Release Builds](#release-builds)
+  * [Benchmarking](#benchmarking)
 * [License](#license)
 
 ## Background
@@ -55,7 +59,7 @@ Hugging Face hosts the official MarianMT checkpoints, tokenizers, and configurat
 
 The `preflight.py` script can be used to check that your system can download and run a pretrained model from Hugging Face. You can choose a device (e.g. CUDA) using the `--device <type>` argument, and a specific model using `--model-name <id>`.
 
-For example, to download an _OPUS MT English-to-French model_ and run it on a CUDA device:
+For example, to download the [OPUS English-to-French model](https://huggingface.co/Helsinki-NLP/opus-mt-en-fr) and run it on a CUDA device:
 
 ```bash
 python scripts/preflight.py --device cuda --model-name Helsinki-NLP/opus-mt-en-fr
@@ -89,13 +93,13 @@ A lightweight Docker image has been provided for testing MarianMT on systems _wi
 Build the image from the repository root:
 
 ```bash
-docker build -f Dockerfile -t marian-rknn .
+docker build -f Dockerfile.python -t marian-rknn-python .
 ```
 
 You can then run the preflight check inside the container:
 
 ```bash
-docker run --rm -it marian-rknn -v "$PWD:/workspace" \
+docker run --rm -it marian-rknn-python -v "$PWD:/workspace" \
   python scripts/preflight.py --device cpu --model-name Helsinki-NLP/opus-mt-en-fr
 ```
 
@@ -104,7 +108,7 @@ docker run --rm -it marian-rknn -v "$PWD:/workspace" \
 For an even easier time, you can use Docker Compose:
 
 ```bash
-docker compose run --build marian-rknn
+docker compose run --build python
 ```
 
 When the command is omitted this will automatically run the preflight script, and drop you into the interactive translator.
@@ -112,7 +116,7 @@ When the command is omitted this will automatically run the preflight script, an
 The same Docker Compose command can be used to run arbitrary scripts inside the container, or even just to load a bash shell:
 
 ```bash
-docker compose run --rm --build marian-rknn /bin/bash
+docker compose run --build python /bin/bash
 ```
 
 > ![NOTE]
@@ -432,6 +436,63 @@ Beam search options are supported for benchmarking as well:
 ```bash
 python scripts/benchmark.py --beam-search --beam-width 3 \
   outs/dd7f6540a7a48a7f4db59e5c0b9c42c8eea67f18 inputs.txt 30
+```
+
+## Native Implementation
+
+A native RKNN implementation of Marian MT can be found in the [cpp](./cpp) directory. This can be cross-compiled for the Rockchip platform using a Docker container. This build relies on a CMake [Out-of-Source Build](https://cmake.org/cmake/help/book/mastering-cmake/chapter/Getting%20Started.html#directory-structure).
+
+### Cross-Compilation
+
+Build and run the container using Docker Compose:
+
+```bash
+docker compose run --build build /bin/bash
+```
+
+Compile the project using CMake:
+
+```bash
+mkdir -p cpp/build
+cd cpp/build
+cmake ..
+make
+```
+
+The `marian-rknn` executable can then be copied over to the target device, using `scp` or another file transfer utility. For example:
+
+```bash
+scp marian-rknn <edge2-ip>:~
+```
+
+### Release Builds
+
+By default, CMake will produce `Debug` builds, which include debugging symbols and have optimisations disabled.
+
+To produce a `Release` build with `-O3` optimisations enabled:
+
+```bash
+cmake -DCMAKE_BUILD_TYPE=Release ..
+```
+
+Alternatively, you can produce a `RelWithDebInfo` build. This will have `-O2` optimisations enabled while also including debug symbols:
+
+```bash
+cmake -DCMAKE_BUILD_TYPE=RelWithDebInfo ..
+```
+
+### Benchmarking
+
+The benchmark binary is built alongside the main executable and can be copied in the same way:
+
+```bash
+scp marian-rknn-benchmark <edge2-ip>:~
+```
+
+You can run the benchmark by passing a model directory, an input text file, and a max runtime in seconds:
+
+```bash
+./marian-rknn-benchmark /path/to/model inputs.txt 30
 ```
 
 ## License

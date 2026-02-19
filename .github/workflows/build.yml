@@ -1,0 +1,42 @@
+name: Build C++ Binary
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - cpp/**
+      - thirdparty/**
+      - Dockerfile.build
+      - .github/workflows/cpp-build.yml
+  pull_request:
+    paths:
+      - cpp/**
+      - thirdparty/**
+      - Dockerfile.build
+      - .github/workflows/cpp-build.yml
+
+jobs:
+  build-cpp:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build container
+        run: |
+          docker build -t marian-rknn-build -f Dockerfile.build .
+
+      - name: Configure and build
+        run: |
+          docker run --rm \
+            -v "$PWD":/workspace \
+            marian-rknn-build \
+            bash -c "cmake -S cpp -B cpp/build -DCMAKE_BUILD_TYPE=Release && cmake --build cpp/build --config Release"
+
+      - name: Upload marian-rknn binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: marian-rknn
+          path: cpp/build/marian-rknn
+          if-no-files-found: error
