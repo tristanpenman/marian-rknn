@@ -182,10 +182,11 @@ def greedy_decode(
         logits = hidden @ weight.T + bias
         next_token = int(np.argmax(logits))
         output_tokens.append(next_token)
-        if step + 1 < dec_len:
-            decoder_input_ids[0, step + 1] = next_token
         if next_token == eos_token_id:
             break
+
+        if step + 1 < dec_len:
+            decoder_input_ids[0, step + 1] = next_token
 
     return output_tokens
 
