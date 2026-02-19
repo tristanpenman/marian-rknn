@@ -3,6 +3,7 @@
 __pycache__
 build
 cache
+cmake-build-*
 CMakeFiles
 CMakeCache.txt
 models/*
