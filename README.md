@@ -22,6 +22,7 @@ This repo contains an implementation of MarianMT that runs on Rockchip NPU (RKNN
   * [Model Output](#model-output)
   * [Show Time!](#show-time)
   * [Beam Search](#beam-search)
+* [Benchmarking](#benchmarking)
 * [License](#license)
 
 ## Background
@@ -413,7 +414,24 @@ The last thing worth mentioning is support for [Beam Search](https://en.wikipedi
 This can enabled using the `--beam-search` option. The beam depth and beam width can also be configured using command line arguments:
 
 ```bash
-python scripts/rknn_infer.py --beam-search --beam-width 3 outs/dd7f6540a7a48a7f4db59e5c0b9c42c8eea67f18
+python scripts/rknn_infer.py --beam-search --beam-width 3 \
+  outs/dd7f6540a7a48a7f4db59e5c0b9c42c8eea67f18
+```
+
+### Benchmarking
+
+To run the Python benchmark wrapper, provide a model path, a text file with input lines, and a maximum runtime (in seconds). The benchmark will loop over the inputs until the time budget is reached and will report aggregate throughput and per-stage timings:
+
+```bash
+python scripts/benchmark.py \
+  outs/dd7f6540a7a48a7f4db59e5c0b9c42c8eea67f18 inputs.txt 30
+```
+
+Beam search options are supported for benchmarking as well:
+
+```bash
+python scripts/benchmark.py --beam-search --beam-width 3 \
+  outs/dd7f6540a7a48a7f4db59e5c0b9c42c8eea67f18 inputs.txt 30
 ```
 
 ## License

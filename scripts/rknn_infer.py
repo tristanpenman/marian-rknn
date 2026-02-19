@@ -3,6 +3,8 @@
 import argparse
 import json
 import os
+import time
+
 import numpy as np
 import sentencepiece as spm
 
@@ -102,7 +104,8 @@ def beam_search_decode(
     eos_token_id,
     dec_len,
     beam_width,
-    beam_depth
+    beam_depth,
+    counters=None
 ):
     """Decode with beam search, keeping the top-k partial sequences.
 
@@ -119,6 +122,7 @@ def beam_search_decode(
                 candidates.append((tokens, score, True))
                 continue
 
+            # prepare decoder input by padding and adding start token
             decoder_input_ids = np.full((1, dec_len), pad_token_id, dtype=np.int32)
             decoder_input_ids[0, 0] = decoder_start_token_id
             for index, token in enumerate(tokens):
@@ -126,23 +130,42 @@ def beam_search_decode(
                 if position < dec_len:
                     decoder_input_ids[0, position] = token
 
+            # invoke decoder and measure timing
+            dec_start = time.perf_counter()
             outputs = rknn_dec.inference(
                 inputs=[decoder_input_ids, attention_mask, encoder_hidden_states]
             )
+            dec_end = time.perf_counter()
+            if counters is not None:
+                counters.decoder_ms += (dec_end - dec_start) * 1000.0
+
+            # extract hidden state for the current step
             decoder_output = outputs[0]
             hidden = decoder_output[0, step, :].astype(np.float32)
-            logits = hidden @ weight.T + bias
 
+            # apply LM head to logits and measure timing
+            lm_start = time.perf_counter()
+            logits = hidden @ weight.T + bias
+            lm_end = time.perf_counter()
+            if counters is not None:
+                counters.lm_head_ms += (lm_end - lm_start) * 1000.0
+
+            # get token probabilities
             logits -= np.max(logits)
             exp_logits = np.exp(logits)
             probs = exp_logits / np.sum(exp_logits)
 
+            # choose top-k tokens and add to candidates
             top_indices = np.argsort(probs)[-beam_width:][::-1]
             for token_id in top_indices:
                 token_id = int(token_id)
                 new_tokens = tokens + [token_id]
                 new_score = score + float(np.log(probs[token_id] + 1e-9))
                 candidates.append((new_tokens, new_score, token_id == eos_token_id))
+
+            # update iteration counter
+            if counters is not None:
+                counters.decoder_iterations += 1
 
         candidates.sort(key=lambda item: item[1], reverse=True)
         beams = candidates[:beam_width]
@@ -161,7 +184,8 @@ def greedy_decode(
     decoder_start_token_id,
     pad_token_id,
     eos_token_id,
-    dec_len
+    dec_len,
+    counters=None
 ):
     """Decode by taking the argmax token at each timestep.
 
@@ -169,22 +193,45 @@ def greedy_decode(
     makes this function redundant. It has been kept for primarily for its
     pedogogical value.
     """
+    # prepare decoder input by padding and adding start token
     decoder_input_ids = np.full((1, dec_len), pad_token_id, dtype=np.int32)
     decoder_input_ids[0, 0] = decoder_start_token_id
     output_tokens = []
 
     for step in range(dec_len - 1):
+        # invoke decoder and measure timing
+        dec_start = time.perf_counter()
         outputs = rknn_dec.inference(
             inputs=[decoder_input_ids, attention_mask, encoder_hidden_states]
         )
+        dec_end = time.perf_counter()
+        if counters is not None:
+            counters.decoder_ms += (dec_end - dec_start) * 1000.0
+
+        # extract hidden state for the current step
         decoder_output = outputs[0]
         hidden = decoder_output[0, step, :].astype(np.float32)
+
+        # apply LM head to logits and measure timing
+        lm_start = time.perf_counter()
         logits = hidden @ weight.T + bias
+        lm_end = time.perf_counter()
+        if counters is not None:
+            counters.lm_head_ms += (lm_end - lm_start) * 1000.0
+
+        # choose token with highest probability and add to output
         next_token = int(np.argmax(logits))
         output_tokens.append(next_token)
+
+        # update iteration counter
+        if counters is not None:
+            counters.decoder_iterations += 1
+
+        # break on EOS...
         if next_token == eos_token_id:
             break
 
+        # ...or prepare for next iteration
         if step + 1 < dec_len:
             decoder_input_ids[0, step + 1] = next_token
 
@@ -206,7 +253,8 @@ def translate_line(
     pad_token_id,
     eos_token_id,
     unk_token_id,
-    beam_search
+    beam_search,
+    counters=None
 ):
     """Translate a single line using the encoder and decoder RKNN models.
 
@@ -214,38 +262,47 @@ def translate_line(
     the desired beam width (e.g. 4) and beam depth (or None to use the decoder
     sequence length).
     """
+    total_start = time.perf_counter()
+
+    # tokenize input and measure token count
     pieces = spm_src.encode(line, out_type=str)
     tokens = [vocab.get(piece, unk_token_id) for piece in pieces]
+    if counters is not None:
+        counters.input_tokens = len(tokens)
 
-    encoder_input_ids = prepare_encoder_inputs(
-        tokens, enc_len, pad_token_id, eos_token_id
-    )
-
+    # prepare encoder inputs and attention mask
+    encoder_input_ids = prepare_encoder_inputs(tokens, enc_len, pad_token_id, eos_token_id)
     attention_mask = build_attention_mask(encoder_input_ids, eos_token_id)
 
+    # invoke encoder and capture timing
+    enc_start = time.perf_counter()
     encoder_outputs = rknn_enc.inference(
         inputs=[encoder_input_ids, attention_mask]
     )
-    encoder_hidden_states = encoder_outputs[0]
+    enc_end = time.perf_counter()
+    if counters is not None:
+        counters.encoder_ms += (enc_end - enc_start) * 1000.0
 
+    # decode output tokens with or without beam search and capture timing
     if beam_search is None:
         output_tokens = greedy_decode(
             rknn_dec,
             attention_mask,
-            encoder_hidden_states,
+            encoder_outputs[0],
             lm_weight,
             lm_bias,
             decoder_start_token_id,
             pad_token_id,
             eos_token_id,
             dec_len,
+            counters
         )
     else:
         beam_width, beam_depth = beam_search
         output_tokens = beam_search_decode(
             rknn_dec,
             attention_mask,
-            encoder_hidden_states,
+            encoder_outputs[0],
             lm_weight,
             lm_bias,
             decoder_start_token_id,
@@ -253,9 +310,11 @@ def translate_line(
             eos_token_id,
             dec_len,
             beam_width,
-            beam_depth
+            beam_depth,
+            counters
         )
 
+    # apply inverted vocab
     decoded_pieces = []
     for token_id in output_tokens:
         if token_id in (eos_token_id, pad_token_id) or token_id <= 0:
@@ -264,7 +323,15 @@ def translate_line(
         if piece is not None:
             decoded_pieces.append(piece)
 
-    return spm_tgt.decode(decoded_pieces)
+    # decode output pieces and capture token count and timing
+    decoded = spm_tgt.decode(decoded_pieces)
+    total_end = time.perf_counter()
+    if counters is not None:
+        counters.output_tokens = len(output_tokens)
+        counters.total_ms += (total_end - total_start) * 1000.0
+
+    return decoded
+
 
 def inference(
     rknn_enc,
