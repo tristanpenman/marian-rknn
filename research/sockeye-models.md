@@ -1,15 +1,15 @@
-# Research
+# Sockeye Models
 
-## Extending Marian-ONNX-Converter for Sockeye
+Goal is to extend `marian-rknn` and `Marian-ONNX-Converter` to support Sockeye models.
 
-The [Marian-ONNX-Converter](../Marian-ONNX-Converter) submodule currently converts **Hugging Face Marian** models into split ONNX graphs (`encoder.onnx` + `decoder.onnx`) and runs greedy decoding in Python.
+The [Marian-ONNX-Converter](../Marian-ONNX-Converter) submodule currently converts Hugging Face Marian models into split ONNX graphs (`encoder.onnx` + `decoder.onnx`) and runs greedy decoding in Python.
 
-To support **Sockeye models** and deploy on **RKNN** (Rockchip NPU) two adaptations are required:
+To support Sockeye models two adaptations are required:
 
-1. `Sockeye -> ONNX` export (submodule)
-2. `ONNX -> RKNN` compilation (this repo)
+1. `Sockeye -> ONNX` export (Marian-ONNX-Converter)
+2. `ONNX -> RKNN` compilation (marian-rknn)
 
-### Add a Sockeye export path
+## Marian-ONNX-Converter
 
 Create a new exporter module (for example `core/sockeye.py`) that mirrors `core/utils.py` behavior but loads Sockeye checkpoints.
 
@@ -19,18 +19,9 @@ Overall flow:
 - Build lightweight `torch.nn.Module` wrappers for encoder and decoder (same idea as `MarianEncoder` / `MarianDecoder`)
 - Export split ONNX graphs with fixed input dtypes (e.g. `int32`) and the same `opset_version=14` as the current implementation
 
-### Add an RKNN runtime backend
-
 In addition to the conversion process, Marian-ONNX-Converter also provides an inference runtime.
 
-We need to add a parallel runtime class (for example `core/marian_rknn.py`) that:
-
-- Loads `encoder.rknn` and `decoder.rknn` with RKNN runtime APIs.
-- Reuses the same greedy-search loop and logits postprocessing.
-- Preserves `int32` token IDs and attention masks.
-- Keeps matrix projection (`F.linear` with `lm_weight.bin` / `lm_bias.bin`) on CPU unless you fuse it into decoder export.
-
-## Extending Local Scripts for Sockeye
+## Marian RKNN
 
 Introduce a new script alongside [convert.py](../scripts/convert.py) (e.g. `convert_sockeye_to_rknn.py`) that consumes exported ONNX files.
 
