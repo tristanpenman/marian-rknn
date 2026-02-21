@@ -431,11 +431,55 @@ python scripts/benchmark.py \
   outs/dd7f6540a7a48a7f4db59e5c0b9c42c8eea67f18 inputs.txt 30
 ```
 
+Sample output:
+
+```
+Benchmark complete
+Elapsed: 30.322 s
+Sentences: 63
+Sentences/sec: 2.078
+Total time: 30182.982 ms
+Encoder time: 767.548 ms
+Decoder time: 22656.443 ms
+LM head time: 6469.972 ms
+Avg total time per sentence: 479.095 ms
+Avg encoder time per sentence: 12.183 ms
+Avg decoder time per sentence: 359.626 ms
+Avg LM head time per sentence: 102.698 ms
+Input tokens: 673
+Output tokens: 682
+Decoder iterations: 682
+Input tokens/sec: 22.195
+Output tokens/sec: 22.492
+```
+
 Beam search options are supported for benchmarking as well:
 
 ```bash
 python scripts/benchmark.py --beam-search --beam-width 3 \
   outs/dd7f6540a7a48a7f4db59e5c0b9c42c8eea67f18 inputs.txt 30
+```
+
+The results with beam search enabled show how much of an impact it can have...
+
+```
+Benchmark complete
+Elapsed: 31.202 s
+Sentences: 17
+Sentences/sec: 0.545
+Total time: 31075.165 ms
+Encoder time: 205.166 ms
+Decoder time: 18357.291 ms
+LM head time: 5341.889 ms
+Avg total time per sentence: 1827.951 ms
+Avg encoder time per sentence: 12.069 ms
+Avg decoder time per sentence: 1079.841 ms
+Avg LM head time per sentence: 314.229 ms
+Input tokens: 183
+Output tokens: 183
+Decoder iterations: 553
+Input tokens/sec: 5.865
+Output tokens/sec: 5.865
 ```
 
 ## Native Implementation
