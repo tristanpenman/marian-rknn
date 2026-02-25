@@ -222,12 +222,40 @@ Enter text to translate (empty line to quit):
 Je suis un poisson
 ```
 
+### Calibration Dataset
+
+The purpose of this dataset is to calibrate the quantization coefficients that will be used for model weights and activations.
+
+The calibration dataset must be built using tokenized inputs rather than raw text. We start by collecting a few thousand sentences similar to the model's expected input. Then we tokenize it using the same SentencePiece and vocab mapping used by the model. The output is flattened to one token-ID sequence per line.
+
+Because RKNN models require fixed-size inputs, each sample must be padded or truncated to the expected input length. Quantization also runs the risk of overfitting to the sample text, so we should prefer diversity over sheer sample count.
+
+The [proprocess.py](scripts/preprocess.py) script can be used to prepare the dataset:
+
+```
+mkdir -p calibration
+python scripts/preprocess.py \
+  --output-dir calibration
+  --spm-model outs/dd7f6540a7a48a7f4db59e5c0b9c42c8eea67f18/source.spm \
+  --vocab outs/dd7f6540a7a48a7f4db59e5c0b9c42c8eea67f18/vocab.json \
+  --config outs/dd7f6540a7a48a7f4db59e5c0b9c42c8eea67f18/config.json \
+  --seq-len 32 \
+  datasets/en-phrases.txt > calibration.txt
+```
+
+This script has already been run on [en-phrases-short.txt](datasets/en-phrases-short.txt), a 10-example subset of the [Random English Sentences](https://www.kaggle.com/datasets/dalageo/random-english-sentences) dataset from Kaggle.
+
+The NumPy output files can be found in [calibration](calibration), and the manifest is in [calibration.txt](calibration.txt). If you'd like to calibrate using the entire dataset, it can be found in [en-phrases.txt](datasets/en-phrases.txt).
+
 ### ONNX to RKNN
 
-Now we can convert the encoder and decoder from ONNX to RKNN. We can use our own [rknn_convert.py](scripts/rknn_convert.py) script for this, passing in the same model output path from earlier:
+We're now ready to convert the encoder and decoder from ONNX to RKNN!
+
+We can use our own [rknn_convert.py](scripts/rknn_convert.py) script for this, passing in the model output and calibration dataset paths from earlier:
 
 ```bash
 python scripts/rknn_convert.py \
+  --calibration calibration.txt \
   outs/dd7f6540a7a48a7f4db59e5c0b9c42c8eea67f18 rk3588
 ```
 

@@ -5,7 +5,10 @@ import json
 import sys
 from pathlib import Path
 
+import numpy as np
 import sentencepiece as spm
+
+from rknn_infer import build_attention_mask, load_config, prepare_encoder_inputs
 
 DEFAULT_SEQ_LEN = 32
 
@@ -22,6 +25,10 @@ def parse_args():
         "input_path",
         nargs="?",
         help="Optional path to an input text file. If omitted, read from stdin.",
+    )
+    parser.add_argument(
+        "--output-dir",
+        help="Optional directory to write output .npy files (defaults to current directory).",
     )
     parser.add_argument(
         "--spm-model",
@@ -83,23 +90,6 @@ def load_vocab(path):
     return vocab
 
 
-def load_config(path):
-    """Load model config JSON file."""
-    with open(path, "r", encoding="utf-8") as handle:
-        config = json.load(handle)
-    if not isinstance(config, dict):
-        raise ValueError(f"Config file must contain a JSON object: {path}")
-    return config
-
-
-def resolve_pad_token_id(config):
-    """Read and validate pad_token_id from config."""
-    pad_token_id = config.get("pad_token_id")
-    if not isinstance(pad_token_id, int):
-        raise ValueError("config.json must contain an integer 'pad_token_id'")
-    return pad_token_id
-
-
 def iter_lines(input_path):
     """Iterate over lines from file or stdin, preserving spaces except trailing newline."""
     if input_path is None:
@@ -125,12 +115,15 @@ def pieces_to_ids(pieces, vocab, unk_id):
     return ids
 
 
-def shape_ids(ids, seq_len, pad_token_id):
-    """Truncate/pad token IDs to fixed length."""
-    clipped = ids[:seq_len]
-    if len(clipped) < seq_len:
-        clipped.extend([pad_token_id] * (seq_len - len(clipped)))
-    return clipped
+def resolve_special_token_ids(config):
+    """Read and validate pad/eos token ids from config."""
+    pad_token_id = config.get("pad_token_id")
+    eos_token_id = config.get("eos_token_id")
+    if not isinstance(pad_token_id, int):
+        raise ValueError("config.json must contain integer 'pad_token_id'")
+    if not isinstance(eos_token_id, int):
+        raise ValueError("config.json must contain integer 'eos_token_id'")
+    return pad_token_id, eos_token_id
 
 
 def main():
@@ -146,7 +139,7 @@ def main():
         sp = load_sentencepiece_model(str(spm_model_path))
         vocab = load_vocab(str(vocab_path))
         config = load_config(str(config_path))
-        pad_token_id = resolve_pad_token_id(config)
+        pad_token_id, eos_token_id = resolve_special_token_ids(config)
     except (OSError, RuntimeError, ValueError, json.JSONDecodeError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         sys.exit(1)
@@ -172,8 +165,21 @@ def main():
                 )
                 sys.exit(1)
 
-            output_ids = shape_ids(token_ids, args.seq_len, pad_token_id)
-            print(" ".join(map(str, output_ids)))
+            input_ids_np = prepare_encoder_inputs(
+                token_ids,
+                args.seq_len,
+                pad_token_id,
+                eos_token_id,
+            )
+            input_ids_path = (Path(args.output_dir) / f"input_ids_{line_index}.npy") if args.output_dir else f"input_ids_{line_index}.npy"
+            np.save(input_ids_path, input_ids_np)
+
+            attention_mask = build_attention_mask(input_ids_np, eos_token_id)
+            attention_mask_path = (Path(args.output_dir) / f"attention_mask_{line_index}.npy") if args.output_dir else f"attention_mask_{line_index}.npy"
+            np.save(attention_mask_path, attention_mask)
+
+            print(f"{input_ids_path} {attention_mask_path}")
+
     except OSError as exc:
         print(f"error: failed to read input: {exc}", file=sys.stderr)
         sys.exit(1)
