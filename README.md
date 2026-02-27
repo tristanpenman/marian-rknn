@@ -424,63 +424,71 @@ python scripts/rknn_infer.py --beam-search --beam-width 3 \
 
 ### Benchmarking
 
-To run the Python benchmark wrapper, provide a model path, a text file with input lines, and a maximum runtime (in seconds). The benchmark will loop over the inputs until the time budget is reached and will report aggregate throughput and per-stage timings:
+To run the Python benchmark wrapper, provide a model path, a text file containing a range of input sentences, and a maximum runtime (in seconds). The benchmark will loop over the inputs until the time budget is reached and will report aggregate throughput and per-stage timings:
 
 ```bash
 python scripts/benchmark.py \
-  outs/dd7f6540a7a48a7f4db59e5c0b9c42c8eea67f18 inputs.txt 30
+  outs/dd7f6540a7a48a7f4db59e5c0b9c42c8eea67f18 \
+  datasets/en-phrases.txt \
+  120
 ```
 
-Sample output:
+Sample output from a single run:
 
 ```
 Benchmark complete
-Elapsed: 30.322 s
-Sentences: 63
-Sentences/sec: 2.078
-Total time: 30182.982 ms
-Encoder time: 767.548 ms
-Decoder time: 22656.443 ms
-LM head time: 6469.972 ms
-Avg total time per sentence: 479.095 ms
-Avg encoder time per sentence: 12.183 ms
-Avg decoder time per sentence: 359.626 ms
-Avg LM head time per sentence: 102.698 ms
-Input tokens: 673
-Output tokens: 682
-Decoder iterations: 682
-Input tokens/sec: 22.195
-Output tokens/sec: 22.492
+Elapsed: 121.442 s
+Sentences: 207
+Sentences/sec: 1.705
+Total time: 121295.378 ms
+Encoder time: 2492.285 ms
+Decoder time: 91355.883 ms
+LM head time: 26394.237 ms
+Avg total time per sentence: 585.968 ms
+Avg encoder time per sentence: 12.040 ms
+Avg decoder time per sentence: 441.333 ms
+Avg LM head time per sentence: 127.508 ms
+Input tokens: 2379
+Output tokens: 2766
+Decoder iterations: 2766
+Input tokens/sec: 19.590
+Output tokens/sec: 22.776
 ```
 
 Beam search options are supported for benchmarking as well:
 
 ```bash
-python scripts/benchmark.py --beam-search --beam-width 3 \
-  outs/dd7f6540a7a48a7f4db59e5c0b9c42c8eea67f18 inputs.txt 30
+python scripts/benchmark.py \
+  --beam-search \
+  --beam-width 3 \
+  outs/dd7f6540a7a48a7f4db59e5c0b9c42c8eea67f18 \
+  datasets/en-phrases.txt \
+  120
 ```
 
 The results with beam search enabled show how much of an impact it can have...
 
 ```
 Benchmark complete
-Elapsed: 31.202 s
-Sentences: 17
-Sentences/sec: 0.545
-Total time: 31075.165 ms
-Encoder time: 205.166 ms
-Decoder time: 18357.291 ms
-LM head time: 5341.889 ms
-Avg total time per sentence: 1827.951 ms
-Avg encoder time per sentence: 12.069 ms
-Avg decoder time per sentence: 1079.841 ms
-Avg LM head time per sentence: 314.229 ms
-Input tokens: 183
-Output tokens: 183
-Decoder iterations: 553
-Input tokens/sec: 5.865
-Output tokens/sec: 5.865
+Elapsed: 121.982 s
+Sentences: 52
+Sentences/sec: 0.426
+Total time: 121851.846 ms
+Encoder time: 631.315 ms
+Decoder time: 72169.512 ms
+LM head time: 20800.915 ms
+Avg total time per sentence: 2343.305 ms
+Avg encoder time per sentence: 12.141 ms
+Avg decoder time per sentence: 1387.875 ms
+Avg LM head time per sentence: 400.018 ms
+Input tokens: 663
+Output tokens: 729
+Decoder iterations: 2177
+Input tokens/sec: 5.435
+Output tokens/sec: 5.976
 ```
+
+Average decoder time per sentence goes up considerably, and the number of output tokens produced drops from 2766 to 729. Overall, we processed 52 sentences @ 0.426 sentences per second.
 
 ## Native Implementation
 
