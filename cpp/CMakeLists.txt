@@ -1,8 +1,14 @@
 cmake_minimum_required(VERSION 3.31)
+project(marian-rknn VERSION 1.0 LANGUAGES CXX)
 
+set(COPYRIGHT "Copyright (c) 2026 Tristan Penman")
+set(IDENTIFIER "com.tristanpenman.marian-rknn")
+
+# Force out-of-source builds
 set(CMAKE_DISABLE_SOURCE_CHANGES ON)
 set(CMAKE_DISABLE_IN_SOURCE_BUILD ON)
 
+# C++17 is required
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
@@ -11,8 +17,6 @@ include(FetchContent)
 
 # Implements FetchContent steps directly instead of through a sub-build
 set(CMAKE_POLICY_DEFAULT_CMP0168 NEW)
-
-project(marian-rknn)
 
 # Default to Debug for single-config generators if user didn't specify anything
 get_property(isMultiConfig GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)
@@ -26,43 +30,57 @@ IF(CMAKE_COMPILER_IS_GNUCC)
     set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -O0")
 ENDIF(CMAKE_COMPILER_IS_GNUCC)
 
+# Set target architecture
 set(TARGET_LIB_ARCH aarch64)
+
+# Avoid building shared libraries
 set(BUILD_SHARED_LIBS OFF)
 
-# rknn
+# RKNN SDK
 set(RKNN_PATH ${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty/rknpu2)
 set(LIBRKNNRT ${RKNN_PATH}/lib/${TARGET_LIB_ARCH}/librknnrt.so)
 set(LIBRKNNRT_INCLUDES ${RKNN_PATH}/include)
 
+# -----------------------------------------------------------------------------
 # Eigen
+# -----------------------------------------------------------------------------
+
 FetchContent_Declare(eigen
     GIT_REPOSITORY https://gitlab.com/libeigen/eigen.git
-    GIT_TAG        5.0.1
+    GIT_TAG 5.0.1
 )
 FetchContent_MakeAvailable(eigen)
 
+# -----------------------------------------------------------------------------
 # JSON for Modern C++
+# -----------------------------------------------------------------------------
+
 FetchContent_Declare(nlohmann_json
     GIT_REPOSITORY https://github.com/nlohmann/json.git
-    GIT_TAG        v3.12.0
+    GIT_TAG v3.12.0
 )
 FetchContent_MakeAvailable(nlohmann_json)
 
-# googletest
-if(BUILD_TESTING)
-    set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
-    FetchContent_Declare(googletest
-        GIT_REPOSITORY https://github.com/google/googletest.git
-        GIT_TAG        v1.17.0
-    )
-    FetchContent_MakeAvailable(googletest)
-endif()
+# -----------------------------------------------------------------------------
+# GoogleTest
+# -----------------------------------------------------------------------------
 
-# sentencepiece options: statically linked, no tcmalloc
+set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+set(BUILD_GMOCK OFF CACHE BOOL "" FORCE)
+set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
+
+FetchContent_Declare(googletest
+    GIT_REPOSITORY https://github.com/google/googletest.git
+    GIT_TAG v1.17.0
+)
+FetchContent_MakeAvailable(googletest)
+
+# -----------------------------------------------------------------------------
+# SentencePiece
+# -----------------------------------------------------------------------------
+
 set(SPM_ENABLE_SHARED OFF CACHE BOOL INTERNAL)
 set(SPM_ENABLE_TCMALLOC OFF CACHE BOOL INTERNAL)
-
-# sentencepiece
 FetchContent_Declare(
     sentencepiece
     GIT_REPOSITORY https://github.com/google/sentencepiece
@@ -78,6 +96,10 @@ set(LIBSENTENCEPIECE_INCLUDES ${sentencepiece_SOURCE_DIR}/src)
 target_compile_options(sentencepiece-static PRIVATE
     $<$<CXX_COMPILER_ID:GNU>:-Wno-stringop-overflow>
 )
+
+# -----------------------------------------------------------------------------
+# Main executable
+# -----------------------------------------------------------------------------
 
 add_executable(${PROJECT_NAME}
     src/file_utils.cc
@@ -107,6 +129,10 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     ${LIBTIMER_INCLUDES}
 )
 
+# -----------------------------------------------------------------------------
+# Benchmark
+# -----------------------------------------------------------------------------
+
 add_executable(${PROJECT_NAME}-benchmark
     src/benchmark.cc
     src/file_utils.cc
@@ -130,22 +156,24 @@ target_include_directories(${PROJECT_NAME}-benchmark PRIVATE
     ${LIBTIMER_INCLUDES}
 )
 
-if(BUILD_TESTING)
-    add_executable(${PROJECT_NAME}-tests
-        tests/file_utils_test.cc
-        src/file_utils.cc
-        src/logger.cc
-    )
+# -----------------------------------------------------------------------------
+# Tests
+# -----------------------------------------------------------------------------
 
-    target_link_libraries(${PROJECT_NAME}-tests PRIVATE
-        GTest::gtest_main
-        nlohmann_json::nlohmann_json
-    )
+add_executable(${PROJECT_NAME}-tests
+    tests/file_utils_test.cc
+    src/file_utils.cc
+    src/logger.cc
+)
 
-    target_include_directories(${PROJECT_NAME}-tests PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/src
-    )
-endif()
+target_link_libraries(${PROJECT_NAME}-tests PRIVATE
+    GTest::gtest_main
+    nlohmann_json::nlohmann_json
+)
+
+target_include_directories(${PROJECT_NAME}-tests PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
 
 message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 message(STATUS "Generator: ${CMAKE_GENERATOR} (multi-config: ${isMultiConfig})")

@@ -182,30 +182,32 @@ int greedy_decode(
     return output_len;
 }
 
-int rknn_nmt_process(
-    rknn_marian_rknn_context_t* app_ctx,
+// Token flow: input tokens, then EOS, then PAD to fill the encoder length.
+std::vector<int32_t> normalize_encoder_tokens(
+    const rknn_marian_rknn_context_t* app_ctx,
     const int32_t* input_token,
-    int32_t* output_token,
     rknn_marian_inference_stats_t* stats)
 {
-    int ret = 0;
-
     // count tokens
     int input_token_give = 0;
-    for (int i=0; i<app_ctx->enc_len; i++) {
+    for (int i = 0; i < app_ctx->enc_len; i++) {
         if (input_token[i] <= 0 || input_token[i] == app_ctx->pad_token_id) {
             break;
         }
         input_token_give++;
     }
+
+    // report stats
+    LOG(VERBOSE) << "Tokens given: " << input_token_give;
     if (stats) {
         stats->input_tokens = static_cast<size_t>(input_token_give);
     }
 
-    // replace trailing tokens with eos, then pad tokens
-    LOG(VERBOSE) << "Tokens given: " << input_token_give;
+    // normalise tokens
     std::vector<int32_t> input_token_sorted;
     input_token_sorted.resize(app_ctx->enc_len, 0);
+
+    // replace trailing tokens with eos, then pad tokens
     std::ostringstream token_stream;
     token_stream << "Token stream: ";
     for (int i = 0; i < app_ctx->enc_len; i++) {
@@ -221,11 +223,20 @@ int rknn_nmt_process(
         }
         token_stream << std::to_string(input_token_sorted[i]) << " ";
     }
+
     LOG(VERBOSE) << token_stream.str();
 
-    // attention mask includes 1s for kept tokens, 0s for masked tokens
+    return input_token_sorted;
+}
+
+// Mask flow: 1s for input and EOS, then transitions to 0s for PAD tokens.
+std::vector<int32_t> build_attention_mask(
+    const rknn_marian_rknn_context_t *app_ctx,
+    const std::vector<int32_t> &input_token_sorted)
+{
     std::vector<int32_t> attention_mask;
     attention_mask.resize(app_ctx->enc_len, 0);
+
     std::ostringstream mask_stream;
     mask_stream << "Generate attention mask:";
     bool padding = false;
@@ -241,6 +252,20 @@ int rknn_nmt_process(
         mask_stream << " " << attention_mask[i];
     }
     LOG(VERBOSE) << mask_stream.str();
+
+    return attention_mask;
+}
+
+int rknn_nmt_process(
+    rknn_marian_rknn_context_t* app_ctx,
+    const int32_t* input_token,
+    int32_t* output_token,
+    rknn_marian_inference_stats_t* stats)
+{
+    int ret = 0;
+
+    std::vector<int32_t> input_token_sorted = normalize_encoder_tokens(app_ctx, input_token, stats);
+    std::vector<int32_t> attention_mask = build_attention_mask(app_ctx, input_token_sorted);
 
     LOG(VERBOSE) << "Copy input ids to encoder";
     memcpy(
