@@ -1,6 +1,6 @@
 # Marian RKNN
 
-This repo contains an implementation of MarianMT that runs on Rockchip NPU (RKNN) devices. It also includes Python scripts and step-by-step instructions to assist with the model conversion process.
+This repo contains Python and C++ implementations of MarianMT that run on Rockchip NPU (RKNN) devices. It also includes Python scripts and step-by-step instructions to assist with the model conversion process.
 
 ### Contents
 
@@ -26,10 +26,11 @@ This repo contains an implementation of MarianMT that runs on Rockchip NPU (RKNN
 * [Native Implementation](#native-implementation)
   * [Cross-Compilation](#cross-compilation)
   * [Release Builds](#release-builds)
-  * [Benchmarking](#benchmarking)
+  * [Benchmarking (Native)](#benchmarking-native)
 * [Evaluation](#evaluation)
-  * [Datasets](#datasets)
+  * [WMT Datasets](#wmt-datasets)
   * [Downloader](#downloader)
+  * [BLEU and chrF](#bleu-and-chrf)
 * [License](#license)
 
 ## Background
@@ -161,7 +162,7 @@ You should be able to run the `convert.py` script without installing any additio
 python Marian-ONNX-Converter/convert.py
 ```
 
-This will prompt you to provide an input file, an optionally a path for an output:
+This will prompt you to provide an input file, and optionally a path for an output:
 
 ```bash
 usage: convert.py [-h] [-o OUTPUT] [--no-quantize] input
@@ -357,7 +358,7 @@ pip install -r requirements.lite.txt
 
 The most important dependency here is [RKNN Toolkit Lite](https://github.com/rockchip-linux/rknn-toolkit/tree/master/rknn-toolkit-lite) - a trimmed down version of the RKNN Toolkit with individual device / NPU support added.
 
-### Model Outputs
+### Model Output
 
 You will also need to copy the conversion output from earlier onto your device:
 
@@ -373,11 +374,26 @@ You can now run the inference script on the Rockchip device:
 python scripts/rknn_infer.py
 ```
 
-When no arguments are provided, this script will simply print out usage information:
+When no arguments are provided, this script will simply print out usage information. You can use `-h` to get more detailed information:
 
 ```
-usage: rknn_infer.py [-h] [--beam-search] [--beam-depth BEAM_DEPTH] [--beam-width BEAM_WIDTH] model_path [inputs ...]
-rknn_infer.py: error: the following arguments are required: model_path, inputs
+usage: rknn_infer.py [-h] [--beam-search] [--beam-depth BEAM_DEPTH] [--beam-width BEAM_WIDTH] [--enc-len ENC_LEN] [--dec-len DEC_LEN] model_path [inputs ...]
+
+Run RKNN Marian translation.
+
+positional arguments:
+  model_path            Path to the directory containing the model files.
+  inputs                Optional text strings to translate (quote to preserve spaces).
+
+options:
+  -h, --help            show this help message and exit
+  --beam-search         Use beam search decoding instead of greedy decoding.
+  --beam-depth BEAM_DEPTH
+                        Maximum decoding depth for beam search.
+  --beam-width BEAM_WIDTH
+                        Beam width for beam search decoding.
+  --enc-len ENC_LEN     Encoder sequence length (default: 32).
+  --dec-len DEC_LEN     Decoder sequence length (default: 32).
 ```
 
 We'll just use the model output files that we copied above:
@@ -416,9 +432,9 @@ Je suis un poisson
 
 ### Beam Search
 
-The last thing worth mentioning is support for [Beam Search](https://en.wikipedia.org/wiki/Beam_search). The default behaviour of the inference script is to use Greedy Decoding, which simply consumes tokens as they are generated. Beam Search is an alternative that allows multiple paths to be explored iteratively. Although it is a little slower, it can be lead to higher quality outputs.
+The last thing worth mentioning is support for [Beam Search](https://en.wikipedia.org/wiki/Beam_search). The default behaviour of the inference script is to use Greedy Decoding, which simply consumes tokens as they are generated. Beam Search is an alternative that allows multiple paths to be explored iteratively. Although it is a little slower, it can lead to higher quality outputs.
 
-This can enabled using the `--beam-search` option. The beam depth and beam width can also be configured using command line arguments:
+This can be enabled using the `--beam-search` option. The beam depth and beam width can also be configured using command line arguments:
 
 ```bash
 python scripts/rknn_infer.py --beam-search --beam-width 3 \
@@ -536,7 +552,7 @@ Alternatively, you can produce a `RelWithDebInfo` build. This will have `-O2` op
 cmake -DCMAKE_BUILD_TYPE=RelWithDebInfo ..
 ```
 
-### Benchmarking
+### Benchmarking (Native)
 
 The benchmark binary is built alongside the main executable and can be copied in the same way:
 
@@ -552,16 +568,16 @@ You can run the benchmark by passing a model directory, an input text file, and 
 
 ## Evaluation
 
-### Datasets
+### WMT Datasets
 
-We use widely available test sets for evaluation, primarily focusing on WMT datasets. WMT is a series of _shared-task_ datasets. They are organised by year, language pair, and task type.
+The evaluation script included in this repo focuses on WMT datasets. WMT refers to a collection of _shared task_ datasets that cover a range of different machine translation tasks and domains. These are released yearly as part of the [Workshop on Machine Translation](https://statmt.org/).
 
-For example, [WMT17](https://statmt.org/wmt17/) states:
+For instance, [WMT17](https://statmt.org/wmt17/) states:
 
 > This year's conference will feature the following shared tasks:
 >
 > - a news translation task,
-> - a biomedical translation task ,
+> - a biomedical translation task,
 > - an automatic post-editing task,
 > - a metrics task (assess MT quality given reference translation).
 > - a quality estimation task (assess MT quality without access to any reference),
@@ -569,24 +585,42 @@ For example, [WMT17](https://statmt.org/wmt17/) states:
 > - a task dedicated to the training of neural MT systems
 > - a task on bandit learning for MT
 
-[SacreBLEU](https://github.com/mjpost/sacrebleu) includes utility functions that help download standard test sets, along with preprocessing and tokenization.
+The data is drawn from various sources, such as [Common Crawl](https://commoncrawl.org/), and the [European Parliament Proceedings](https://www.statmt.org/europarl/) and [News Commentary Parallel Corpus](https://autonlp.ai/datasets/news-commentary-parallel-corpus) datasets.
+
+The WMT datasets date back to 2006. However, it is common to use WMT16 or later for evaluation purposes.
 
 ### Downloader
 
-As a convenience, `scripts/downloader.py` has been provided as a wrapper around SacreBLEU. It can be used to download and prepare standard SacreBLEU test sets for English-to-French.
+[SacreBLEU](https://github.com/mjpost/sacrebleu) includes utility functions that can be used to download WMT test sets, and to preprocess and tokenize the data so that it is ready for testing.
+
+As a convenience, the [downloader.py](scripts/downloader.py) script has been provided as a wrapper around SacreBLEU. It can be used to download and prepare WMT datasets. This script works with arbitrary language pairs, not just English-to-French.
 
 To inspect available test sets for `en-fr`:
 
 ```bash
-python scripts/downloader.py --langpair en-fr --list
+python scripts/downloader.py \
+  --langpair en-fr \
+  --list
 ```
 
-To download a few common WMT sets and write them to `datasets/eval`:
+The list is quite long. We can see at the top of the list, several `wmt` datasets:
+
+```
+Available test sets for en-fr:
+- wmt15
+- wmt14
+- wmt14/full
+- wmt13
+- wmt12
+...
+```
+
+Coverage for English-to-French was reduced after 2015, so we'll download the `wmt14` and `wmt15` datasets, and save them to `datasets/eval`:
 
 ```bash
 python scripts/downloader.py \
   --langpair en-fr \
-  --test-sets wmt14,wmt17,wmt20,wmt22,wmt23 \
+  --test-sets wmt14,wmt15 \
   --output-dir datasets/eval
 ```
 
@@ -598,6 +632,14 @@ This creates one directory per test set containing:
 - `...`
 
 A manifest file is also generated at `datasets/eval/manifest.en-fr.tsv` to make scripting easy.
+
+### BLEU and chrF
+
+The [eval.py](scripts/eval.py) script can be used to generate BLEU and chrF metrics for any of the downloaded datasets.
+
+[BLEU](https://en.wikipedia.org/wiki/BLEU) (or _Bilingual Evaluation Understudy_) measures the similarity between text generated by a model, and a human-generated reference text by comparing word-level n-grams.
+
+[chrF](https://aclanthology.org/W15-3049.pdf) (or _CHaRacter-level F-score_), measures the similarity between text generated by a model and a human-generated reference text using character-level n-grams rather than whole words. This makes it more sensitive to spelling, inflection, and morphology differences.
 
 ## License
 
