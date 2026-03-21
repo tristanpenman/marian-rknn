@@ -27,6 +27,9 @@ This repo contains an implementation of MarianMT that runs on Rockchip NPU (RKNN
   * [Cross-Compilation](#cross-compilation)
   * [Release Builds](#release-builds)
   * [Benchmarking](#benchmarking)
+* [Evaluation](#evaluation)
+  * [Datasets](#datasets)
+  * [Downloader](#downloader)
 * [License](#license)
 
 ## Background
@@ -546,6 +549,55 @@ You can run the benchmark by passing a model directory, an input text file, and 
 ```bash
 ./marian-rknn-benchmark /path/to/model inputs.txt 30
 ```
+
+## Evaluation
+
+### Datasets
+
+We use widely available test sets for evaluation, primarily focusing on WMT datasets. WMT is a series of _shared-task_ datasets. They are organised by year, language pair, and task type.
+
+For example, [WMT17](https://statmt.org/wmt17/) states:
+
+> This year's conference will feature the following shared tasks:
+>
+> - a news translation task,
+> - a biomedical translation task ,
+> - an automatic post-editing task,
+> - a metrics task (assess MT quality given reference translation).
+> - a quality estimation task (assess MT quality without access to any reference),
+> - a multimodal translation task
+> - a task dedicated to the training of neural MT systems
+> - a task on bandit learning for MT
+
+[SacreBLEU](https://github.com/mjpost/sacrebleu) includes utility functions that help download standard test sets, along with preprocessing and tokenization.
+
+### Downloader
+
+As a convenience, `scripts/downloader.py` has been provided as a wrapper around SacreBLEU. It can be used to download and prepare standard SacreBLEU test sets for English-to-French.
+
+To inspect available test sets for `en-fr`:
+
+```bash
+python scripts/downloader.py --langpair en-fr --list
+```
+
+To download a few common WMT sets and write them to `datasets/eval`:
+
+```bash
+python scripts/downloader.py \
+  --langpair en-fr \
+  --test-sets wmt14,wmt17,wmt20,wmt22,wmt23 \
+  --output-dir datasets/eval
+```
+
+This creates one directory per test set containing:
+
+- `source.en.txt`
+- `reference1.fr.txt`
+- `reference2.fr.txt` (and so on, if the set has multiple references)
+- `...`
+
+A manifest file is also generated at `datasets/eval/manifest.en-fr.tsv` to make scripting easy.
 
 ## License
 
