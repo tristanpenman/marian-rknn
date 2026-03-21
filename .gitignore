@@ -1,4 +1,6 @@
 .cache
+.DS_Store
+.idea
 .python-version
 __pycache__
 build
@@ -6,5 +8,6 @@ cache
 cmake-build-*
 CMakeFiles
 CMakeCache.txt
+datasets/eval
 models/*
 outs
