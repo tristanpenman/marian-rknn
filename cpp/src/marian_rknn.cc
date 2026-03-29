@@ -39,20 +39,28 @@
 
 using json = nlohmann::json;
 
-// encoder input
-#define ENC_IN_INPUT_IDS_IDX 0
-#define ENC_IN_ATTENTION_MASK_IDX 1
+enum class EncoderInput : int
+{
+    InputIds = 0,
+    AttentionMask = 1
+};
 
-// encoder output
-#define ENC_OUT_ENCODER_HIDDEN_STATES 0
+enum class DecoderInput : int
+{
+    InputIds = 0,
+    AttentionMask = 1,
+    EncoderHiddenStates = 2
+};
 
-// decoder input
-#define DEC_IN_INPUT_IDS_IDX 0
-#define DEC_IN_ATTENTION_MASK_IDX 1
-#define DEC_IN_ENCODER_HIDDEN_STATES 2
+enum class EncoderOutput : int
+{
+    EncoderHiddenStates = 0
+};
 
-// decoder output
-#define DEC_OUT_DECODER_OUTPUT 0
+enum class DecoderOutput : int
+{
+    DecoderOutput = 0
+};
 
 void rknn_marian_lm_head_t::operator()(const float* hidden, float* out_logits) const
 {
@@ -68,6 +76,12 @@ void rknn_marian_lm_head_t::operator()(const float* hidden, float* out_logits) c
 }
 
 namespace {
+
+template<typename EnumType>
+constexpr int to_index(const EnumType input)
+{
+    return static_cast<int>(input);
+}
 
 int greedy_decode(
     rknn_marian_rknn_context_t* app_ctx,
@@ -89,9 +103,9 @@ int greedy_decode(
     for (int num_iter = 0; num_iter < app_ctx->dec_len - 1; num_iter++) {
         LOG(VERBOSE) << "Decoder iteration " << num_iter;
         memcpy(
-            app_ctx->dec.input_mem[DEC_IN_INPUT_IDS_IDX]->virt_addr,
+            app_ctx->dec.input_mem[to_index(DecoderInput::InputIds)]->virt_addr,
             decoder_input_ids.data(),
-            app_ctx->dec.in_attr[DEC_IN_INPUT_IDS_IDX].size
+            app_ctx->dec.in_attr[to_index(DecoderInput::InputIds)].size
         );
 
         LOG(VERBOSE) << "rknn_run";
@@ -109,7 +123,7 @@ int greedy_decode(
         }
 
         LOG(VERBOSE) << "Convert fp16 to fp32";
-        auto ptr = static_cast<half *>(app_ctx->dec.output_mem[DEC_OUT_DECODER_OUTPUT]->virt_addr);
+        auto ptr = static_cast<half *>(app_ctx->dec.output_mem[to_index(DecoderOutput::DecoderOutput)]->virt_addr);
         std::vector<float> output_floats(app_ctx->lm_head.D, 0);
         const half* iter_ptr = ptr + app_ctx->lm_head.D * num_iter;
         std::transform(
@@ -265,16 +279,16 @@ int rknn_nmt_process(
 
     LOG(VERBOSE) << "Copy input ids to encoder";
     memcpy(
-        app_ctx->enc.input_mem[ENC_IN_INPUT_IDS_IDX]->virt_addr,
+        app_ctx->enc.input_mem[to_index(EncoderInput::InputIds)]->virt_addr,
         normalized_tokens.data(),
-        app_ctx->enc.in_attr[ENC_IN_INPUT_IDS_IDX].size
+        app_ctx->enc.in_attr[to_index(EncoderInput::InputIds)].size
     );
 
     LOG(VERBOSE) << "Copy mask to encoder";
     memcpy(
-        app_ctx->enc.input_mem[ENC_IN_ATTENTION_MASK_IDX]->virt_addr,
+        app_ctx->enc.input_mem[to_index(EncoderInput::AttentionMask)]->virt_addr,
         attention_mask.data(),
-        app_ctx->enc.in_attr[ENC_IN_ATTENTION_MASK_IDX].size
+        app_ctx->enc.in_attr[to_index(EncoderInput::AttentionMask)].size
     );
 
     LOG(VERBOSE) << "Run encoder";
@@ -295,16 +309,16 @@ int rknn_nmt_process(
 
     LOG(VERBOSE) << "Copy output from encoder to decoder";
     memcpy(
-        app_ctx->dec.input_mem[DEC_IN_ENCODER_HIDDEN_STATES]->virt_addr,
-        app_ctx->enc.output_mem[ENC_OUT_ENCODER_HIDDEN_STATES]->virt_addr,
-        app_ctx->enc.out_attr[ENC_OUT_ENCODER_HIDDEN_STATES].size
+        app_ctx->dec.input_mem[to_index(DecoderInput::EncoderHiddenStates)]->virt_addr,
+        app_ctx->enc.output_mem[to_index(EncoderOutput::EncoderHiddenStates)]->virt_addr,
+        app_ctx->enc.out_attr[to_index(EncoderOutput::EncoderHiddenStates)].size
     );
 
     LOG(VERBOSE) << "Copy attention mask to decoder";
     memcpy(
-        app_ctx->dec.input_mem[DEC_IN_ATTENTION_MASK_IDX]->virt_addr,
+        app_ctx->dec.input_mem[to_index(DecoderInput::AttentionMask)]->virt_addr,
         attention_mask.data(),
-        app_ctx->dec.in_attr[DEC_IN_ATTENTION_MASK_IDX].size
+        app_ctx->dec.in_attr[to_index(DecoderInput::AttentionMask)].size
     );
 
     return greedy_decode(app_ctx, output_token, stats);
@@ -331,19 +345,19 @@ bool validate_equal_length(const size_t lhs, const size_t rhs, const char* lhs_l
 
 int validate_sequence_lengths(const rknn_marian_rknn_context_t* app_ctx)
 {
-    const auto enc_mask_len = get_sequence_length(app_ctx->enc.in_attr[ENC_IN_ATTENTION_MASK_IDX], "encoder attention_mask");
+    const auto enc_mask_len = get_sequence_length(app_ctx->enc.in_attr[to_index(EncoderInput::AttentionMask)], "encoder attention_mask");
     LOG(VERBOSE) << "Encoder mask len: " << enc_mask_len;
     if (!validate_equal_length(app_ctx->enc_len, enc_mask_len, "encoder input_ids", "encoder attention_mask")) {
         return -1;
     }
 
-    const auto dec_mask_len = get_sequence_length(app_ctx->dec.in_attr[DEC_IN_ATTENTION_MASK_IDX], "decoder attention_mask");
+    const auto dec_mask_len = get_sequence_length(app_ctx->dec.in_attr[to_index(DecoderInput::AttentionMask)], "decoder attention_mask");
     LOG(VERBOSE) << "Decoder mask len: " << dec_mask_len;
     if (!validate_equal_length(app_ctx->dec_len, dec_mask_len, "decoder input_ids", "decoder attention_mask")) {
         return -1;
     }
 
-    const size_t dec_hidden_len = get_sequence_length(app_ctx->dec.in_attr[DEC_IN_ENCODER_HIDDEN_STATES], "decoder encoder_hidden_states");
+    const size_t dec_hidden_len = get_sequence_length(app_ctx->dec.in_attr[to_index(DecoderInput::EncoderHiddenStates)], "decoder encoder_hidden_states");
     LOG(VERBOSE) << "Decoder hidden len: " << dec_hidden_len;
     if (dec_hidden_len <= 0) {
         return -1;
@@ -353,8 +367,8 @@ int validate_sequence_lengths(const rknn_marian_rknn_context_t* app_ctx)
         return -1;
     }
 
-    if (app_ctx->dec.in_attr[DEC_IN_ENCODER_HIDDEN_STATES].n_dims >= 3) {
-        const size_t dec_hidden_dim = app_ctx->dec.in_attr[DEC_IN_ENCODER_HIDDEN_STATES].dims[2];
+    if (app_ctx->dec.in_attr[to_index(DecoderInput::EncoderHiddenStates)].n_dims >= 3) {
+        const size_t dec_hidden_dim = app_ctx->dec.in_attr[to_index(DecoderInput::EncoderHiddenStates)].dims[2];
         LOG(VERBOSE) << "Decoder hidden dim: " << dec_hidden_dim;
         if (dec_hidden_dim != app_ctx->lm_head.D) {
             LOG(ERROR) << "decoder encoder_hidden_states dim (" << dec_hidden_dim
@@ -431,10 +445,10 @@ int init_marian_rknn_model(const std::string &model_dir, rknn_marian_rknn_contex
         return -1;
     }
 
-    app_ctx->enc_len = get_sequence_length(app_ctx->enc.in_attr[ENC_IN_INPUT_IDS_IDX], "encoder input_ids");
+    app_ctx->enc_len = get_sequence_length(app_ctx->enc.in_attr[to_index(EncoderInput::InputIds)], "encoder input_ids");
     LOG(INFO) << "Encoder length: " << app_ctx->enc_len;
 
-    app_ctx->dec_len = get_sequence_length(app_ctx->dec.in_attr[DEC_IN_INPUT_IDS_IDX], "decoder input_ids");
+    app_ctx->dec_len = get_sequence_length(app_ctx->dec.in_attr[to_index(DecoderInput::InputIds)], "decoder input_ids");
     LOG(INFO) << "Decoder length: " << app_ctx->dec_len;
 
     if (validate_sequence_lengths(app_ctx) != 0) {

@@ -21,6 +21,8 @@
 #include "logger.h"
 #include "marian_rknn.h"
 
+static constexpr size_t kMaxUserInputLen = 1024;
+
 int read_user_input(std::string &line)
 {
     std::cout << "Enter text to translate:\n";
@@ -86,8 +88,8 @@ int main(const int argc, char **argv)
             }
         }
 
-        if (input_text.size() >= MAX_USER_INPUT_LEN) {
-            input_text.resize(MAX_USER_INPUT_LEN - 1);
+        if (input_text.size() >= kMaxUserInputLen) {
+            input_text.resize(kMaxUserInputLen - 1);
         }
 
         LOG(INFO) << "About to run inference...";

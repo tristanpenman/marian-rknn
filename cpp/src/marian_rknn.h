@@ -23,8 +23,6 @@
 
 #include "rknn_utils.h"
 
-#define MAX_USER_INPUT_LEN 1024
-
 struct rknn_marian_lm_head_t
 {
     int D;
