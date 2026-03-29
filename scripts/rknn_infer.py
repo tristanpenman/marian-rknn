@@ -17,6 +17,7 @@ ENC_IN_ATTENTION_MASK_IDX = 1
 DEC_IN_INPUT_IDS_IDX = 0
 DEC_IN_ATTENTION_MASK_IDX = 1
 
+
 def parse_args():
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(description="Run RKNN Marian translation.")
@@ -132,9 +133,8 @@ def beam_search_decode(
 
             # invoke decoder and measure timing
             dec_start = time.perf_counter()
-            outputs = rknn_dec.inference(
-                inputs=[decoder_input_ids, attention_mask, encoder_hidden_states]
-            )
+            inputs = [decoder_input_ids, attention_mask, encoder_hidden_states]
+            outputs = rknn_dec.inference(inputs=inputs)
             dec_end = time.perf_counter()
             if counters is not None:
                 counters.decoder_ms += (dec_end - dec_start) * 1000.0
@@ -201,9 +201,8 @@ def greedy_decode(
     for step in range(dec_len - 1):
         # invoke decoder and measure timing
         dec_start = time.perf_counter()
-        outputs = rknn_dec.inference(
-            inputs=[decoder_input_ids, attention_mask, encoder_hidden_states]
-        )
+        inputs = [decoder_input_ids, attention_mask, encoder_hidden_states]
+        outputs = rknn_dec.inference(inputs=inputs)
         dec_end = time.perf_counter()
         if counters is not None:
             counters.decoder_ms += (dec_end - dec_start) * 1000.0
@@ -276,9 +275,8 @@ def translate_line(
 
     # invoke encoder and capture timing
     enc_start = time.perf_counter()
-    encoder_outputs = rknn_enc.inference(
-        inputs=[encoder_input_ids, attention_mask]
-    )
+    inputs = [encoder_input_ids, attention_mask]
+    encoder_outputs = rknn_enc.inference(inputs=inputs)
     enc_end = time.perf_counter()
     if counters is not None:
         counters.encoder_ms += (enc_end - enc_start) * 1000.0
@@ -365,7 +363,7 @@ def inference(
         raise ValueError("Missing 'd_model' in config.json")
 
     vocab_size = config.get("vocab_size")
-    if model_dim is None:
+    if vocab_size is None:
         raise ValueError("Missing 'vocab_size' in config.json")
 
     # will raise if size is wrong

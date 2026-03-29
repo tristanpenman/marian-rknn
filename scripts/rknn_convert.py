@@ -8,15 +8,13 @@ from rknn_infer import inference, load_config, DEFAULT_DEC_LEN, DEFAULT_ENC_LEN
 
 from rknn.api import RKNN
 
-DEFAULT_QUANT = False
-
 DECODER_INPUTS = ['input_ids', 'attention_mask', 'encoder_hidden_states']
 ENCODER_INPUTS = ['input_ids', 'attention_mask']
 
 def parse_arg():
     """Parse command line arguments, returning them as a tuple."""
     parser = argparse.ArgumentParser(
-        description="Convert Marian ONNX models to RKNN.",
+        description="Convert Marian ONNX models to RKNN format without quantization.",
     )
     parser.add_argument("input_path", help="Path to the directory containing the ONNX files.")
     parser.add_argument("--dynamic-input", action="store_true", default=False, help="Export model using dynamic inputs (default=off).")
@@ -54,15 +52,13 @@ def parse_arg():
     if args.enc_len <= 0 or args.dec_len <= 0:
         parser.error("Encoder and decoder lengths must be positive.")
 
-    do_quant = DEFAULT_QUANT
     output_path = args.output_path or args.input_path
 
-    return args.input_path, args.platform, do_quant, output_path, args.dynamic_input, args.enc_len, args.dec_len
+    return args.input_path, args.platform, output_path, args.dynamic_input, args.enc_len, args.dec_len
 
 def convert_model(
     model_path,
     platform,
-    do_quant,
     dynamic_input,
     output_path,
     inputs,
@@ -95,7 +91,7 @@ def convert_model(
         exit(ret)
 
     print('--> Building model')
-    ret = rknn.build(do_quantization=do_quant)
+    ret = rknn.build(do_quantization=False)
     if ret != 0:
         print('Build model failed!')
         exit(ret)
@@ -122,7 +118,7 @@ def convert_weights(input_path, output_path):
 
 def main():
     """Convert encoder/decoder ONNX models and LM head weights to RKNN assets."""
-    input_path, platform, do_quant, output_path, dynamic_input, enc_len, dec_len = parse_arg()
+    input_path, platform, output_path, dynamic_input, enc_len, dec_len = parse_arg()
 
     config = load_config(f"{input_path}/config.json")
     model_dim = config.get("d_model")
@@ -130,14 +126,14 @@ def main():
         raise ValueError("Missing 'd_model' in config.json")
 
     encoder_input_size_list = [[1, enc_len], [1, enc_len]]
-    decoder_input_size_list = [[1, dec_len], [1, dec_len], [1, dec_len, model_dim]]
+    decoder_input_size_list = [[1, dec_len], [1, enc_len], [1, enc_len, model_dim]]
 
     print('Converting encoder...')
-    rknn_enc = convert_model(f"{input_path}/encoder.onnx", platform, do_quant, dynamic_input,
+    rknn_enc = convert_model(f"{input_path}/encoder.onnx", platform, dynamic_input,
                              f"{output_path}/encoder.rknn", ENCODER_INPUTS, encoder_input_size_list)
 
     print('Converting decoder...')
-    rknn_dec = convert_model(f"{input_path}/decoder.onnx", platform, do_quant, dynamic_input,
+    rknn_dec = convert_model(f"{input_path}/decoder.onnx", platform, dynamic_input,
                              f"{output_path}/decoder.rknn", DECODER_INPUTS, decoder_input_size_list)
 
     print('Converting LM weights...')

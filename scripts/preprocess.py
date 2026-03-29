@@ -1,0 +1,215 @@
+#!/usr/bin/env python3
+
+import argparse
+import json
+import sys
+from pathlib import Path
+
+import numpy as np
+import sentencepiece as spm
+
+from rknn_infer import build_attention_mask, load_config, prepare_encoder_inputs
+
+DEFAULT_SEQ_LEN = 32
+
+
+def parse_args():
+    """Parse command line arguments."""
+    parser = argparse.ArgumentParser(
+        description=(
+            "Convert raw text into fixed-length token-ID lines suitable for "
+            "RKNN quantization datasets."
+        )
+    )
+    parser.add_argument(
+        "input_path",
+        nargs="?",
+        help="Optional path to an input text file. If omitted, read from stdin.",
+    )
+    parser.add_argument(
+        "--output-dir",
+        help="Optional directory to write output .npy files (defaults to current directory).",
+    )
+    parser.add_argument(
+        "--spm-model",
+        required=True,
+        help="Path to SentencePiece model file.",
+    )
+    parser.add_argument(
+        "--vocab",
+        required=True,
+        help="Path to vocab.json containing piece -> id mappings.",
+    )
+    parser.add_argument(
+        "--config",
+        required=True,
+        help="Path to config.json containing pad_token_id.",
+    )
+    parser.add_argument(
+        "--seq-len",
+        type=int,
+        default=DEFAULT_SEQ_LEN,
+        help=f"Output sequence length (default: {DEFAULT_SEQ_LEN}).",
+    )
+    parser.add_argument(
+        "--keep-empty",
+        action="store_true",
+        help="Emit padded rows for empty/whitespace-only lines.",
+    )
+    args = parser.parse_args()
+
+    if args.seq_len <= 0:
+        parser.error("--seq-len must be a positive integer")
+
+    return args
+
+
+def load_sentencepiece_model(path):
+    """Load a SentencePiece model from disk."""
+    processor = spm.SentencePieceProcessor()
+    if not processor.load(path):
+        raise RuntimeError(f"Failed to load SentencePiece model: {path}")
+    return processor
+
+
+def load_vocab(path):
+    """Load and validate vocab mapping (piece -> token id)."""
+    with open(path, "r", encoding="utf-8") as handle:
+        data = json.load(handle)
+
+    if not isinstance(data, dict):
+        raise ValueError(f"Vocab file must contain a JSON object: {path}")
+
+    vocab = {}
+    for piece, token_id in data.items():
+        if not isinstance(token_id, int):
+            raise ValueError(
+                f"Vocab token ID must be int for piece {piece!r}, got {type(token_id).__name__}"
+            )
+        vocab[piece] = token_id
+    return vocab
+
+
+def iter_lines(input_path):
+    """Iterate over lines from file or stdin, preserving spaces except trailing newline."""
+    if input_path is None:
+        for line in sys.stdin:
+            yield line.rstrip("\n")
+        return
+
+    with open(input_path, "r", encoding="utf-8") as handle:
+        for line in handle:
+            yield line.rstrip("\n")
+
+
+def pieces_to_ids(pieces, vocab, unk_id, line_index=None):
+    """Convert sentencepiece tokens to vocab IDs."""
+    ids = []
+    for piece in pieces:
+        token_id = vocab.get(piece)
+        if token_id is None:
+            if unk_id is None:
+                print(
+                    (
+                        "error: missing vocab entry for piece "
+                        f"{piece!r}"
+                        + (f" at line {line_index}" if line_index is not None else "")
+                        + "; <unk> token is not available in vocab.json"
+                    ),
+                    file=sys.stderr,
+                )
+                sys.exit(1)
+            token_id = unk_id
+        ids.append(token_id)
+    return ids
+
+
+def resolve_special_token_ids(config):
+    """Read and validate pad/eos token ids from config."""
+    pad_token_id = config.get("pad_token_id", 0)
+    eos_token_id = config.get("eos_token_id", 0)
+    unk_token_id = config.get("unk_token_id", 0)
+    if not isinstance(pad_token_id, int):
+        raise ValueError("config.json must contain integer 'pad_token_id'")
+    if not isinstance(eos_token_id, int):
+        raise ValueError("config.json must contain integer 'eos_token_id'")
+    if not isinstance(unk_token_id, int):
+        raise ValueError("config.json must contain integer 'unk_token_id'")
+    return pad_token_id, eos_token_id, unk_token_id
+
+
+def process_calibration_data(
+    text: str,
+    line_index: int,
+    sp,
+    vocab,
+    unk_id,
+    pad_token_id,
+    eos_token_id,
+    seq_len,
+    output_dir
+):
+    pieces = sp.encode(text, out_type=str)
+    token_ids = pieces_to_ids(pieces, vocab, unk_id, line_index=line_index)
+
+    # prepare encoder inputs and attention mask
+    input_ids = prepare_encoder_inputs(token_ids, seq_len, pad_token_id, eos_token_id)
+    attention_mask = build_attention_mask(input_ids, eos_token_id)
+
+    # write input IDs to disk
+    input_ids_npy = f"input_ids_{line_index}.npy"
+    input_ids_path = (Path(output_dir) / input_ids_npy) if output_dir else input_ids_npy
+    np.save(input_ids_path, input_ids)
+
+    # write attention mask to disk
+    attention_mask_npy = f"attention_mask_{line_index}.npy"
+    attention_mask_path = (Path(output_dir) / attention_mask_npy) if output_dir else attention_mask_npy
+    np.save(attention_mask_path, attention_mask)
+
+    return input_ids_npy, attention_mask_npy
+
+
+def main():
+    """Entrypoint for quantization dataset preprocessing."""
+    args = parse_args()
+
+    input_path = Path(args.input_path) if args.input_path else None
+    spm_model_path = Path(args.spm_model)
+    vocab_path = Path(args.vocab)
+    config_path = Path(args.config)
+
+    try:
+        sp = load_sentencepiece_model(str(spm_model_path))
+        vocab = load_vocab(str(vocab_path))
+        config = load_config(str(config_path))
+        pad_token_id, eos_token_id, _unk_token_id = resolve_special_token_ids(config)
+    except (OSError, RuntimeError, ValueError, json.JSONDecodeError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        sys.exit(1)
+
+    unk_id = vocab.get("<unk>")
+
+    try:
+        for line_index, text in enumerate(iter_lines(str(input_path) if input_path else None), start=1):
+            if not text.strip() and not args.keep_empty:
+                continue
+
+            process_calibration_data(
+                text=text,
+                line_index=line_index,
+                sp=sp,
+                vocab=vocab,
+                unk_id=unk_id,
+                pad_token_id=pad_token_id,
+                eos_token_id=eos_token_id,
+                seq_len=args.seq_len,
+                output_dir=args.output_dir,
+            )
+
+    except OSError as exc:
+        print(f"error: failed to read input: {exc}", file=sys.stderr)
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()
