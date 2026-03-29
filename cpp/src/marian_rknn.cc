@@ -77,17 +77,11 @@ int greedy_decode(
     int ret = 0;
 
     LOG(VERBOSE) << "Setup decoder input state";
-    std::vector<int32_t> decoder_input_ids;
-    decoder_input_ids.resize(app_ctx->dec_len, 0);
+    std::vector<int32_t> decoder_input_ids(app_ctx->dec_len, app_ctx->pad_token_id);
     decoder_input_ids[0] = app_ctx->decoder_start_token_id;
-    for (int i = 1; i < app_ctx->dec_len; i++) {
-        decoder_input_ids[i] = app_ctx->pad_token_id;
-    }
 
     // output starts with pad token
-    for (int i = 0; i < app_ctx->dec_len; i++) {
-        output_token[i] = app_ctx->pad_token_id;
-    }
+    std::fill_n(output_token, app_ctx->dec_len, app_ctx->pad_token_id);
 
     TIMER timer;
     TIMER timer_total;
@@ -117,9 +111,13 @@ int greedy_decode(
         LOG(VERBOSE) << "Convert fp16 to fp32";
         auto ptr = static_cast<half *>(app_ctx->dec.output_mem[DEC_OUT_DECODER_OUTPUT]->virt_addr);
         std::vector<float> output_floats(app_ctx->lm_head.D, 0);
-        for (int j = 0; j < app_ctx->lm_head.D; j++) {
-            output_floats[j] = half_to_float(ptr[app_ctx->lm_head.D * num_iter + j]);
-        }
+        const half* iter_ptr = ptr + app_ctx->lm_head.D * num_iter;
+        std::transform(
+            iter_ptr,
+            iter_ptr + app_ctx->lm_head.D,
+            output_floats.begin(),
+            half_to_float
+        );
 
         LOG(VERBOSE) << "Apply LM head";
         auto lm_start = std::chrono::steady_clock::now();
@@ -134,19 +132,16 @@ int greedy_decode(
             stats->lm_head_ms += elapsed_ms(lm_start, lm_end);
         }
 
-        LOG(VERBOSE) << "Argmax:";
-        int max = 0;
-        float value = -INFINITY;
-        for (int i = 0; i < app_ctx->lm_head.V; i++) {
-            if (logits[i] > value) {
-                value = logits[i];
-                max = i;
-            }
-        }
+        // find argmax of logits
+        const auto max_it = std::max_element(logits.begin(), logits.end());
+        const int max = static_cast<int>(std::distance(logits.begin(), max_it));
+        const float value = *max_it;
+        LOG(VERBOSE) << "Argmax: " << max << " (" << value << ")";
 
-        LOG(VERBOSE) << max << " (" << value << ")";
+        // write output
         output_token[num_iter] = max;
 
+        // feed back into decoder
         if (num_iter < app_ctx->dec_len - 1) {
             decoder_input_ids[num_iter + 1] = max;
         }
@@ -185,73 +180,76 @@ int greedy_decode(
 // Token flow: input tokens, then EOS, then PAD to fill the encoder length.
 std::vector<int32_t> normalize_encoder_tokens(
     const rknn_marian_rknn_context_t* app_ctx,
-    const int32_t* input_token,
+    const int32_t* input_tokens,
     rknn_marian_inference_stats_t* stats)
 {
-    // count tokens
-    int input_token_give = 0;
-    for (int i = 0; i < app_ctx->enc_len; i++) {
-        if (input_token[i] <= 0 || input_token[i] == app_ctx->pad_token_id) {
-            break;
+    // find end of input tokens, which is marked by first occurrence of non-positive or pad token
+    const auto input_end = std::find_if(
+        input_tokens,
+        input_tokens + app_ctx->enc_len,
+        [app_ctx](const int32_t token) {
+            return token <= 0 || token == app_ctx->pad_token_id;
         }
-        input_token_give++;
-    }
+    );
 
     // report stats
-    LOG(VERBOSE) << "Tokens given: " << input_token_give;
+    const size_t num_tokens = std::distance(input_tokens, input_end);
+    LOG(VERBOSE) << "Tokens given: " << num_tokens;
     if (stats) {
-        stats->input_tokens = static_cast<size_t>(input_token_give);
+        stats->input_tokens = num_tokens;
     }
 
-    // normalise tokens
-    std::vector<int32_t> input_token_sorted;
-    input_token_sorted.resize(app_ctx->enc_len, 0);
+    // replace trailing token with eos, pad if necessary
+    std::vector<int32_t> normalized_tokens(app_ctx->enc_len, app_ctx->pad_token_id);
+    std::copy_n(input_tokens, num_tokens, normalized_tokens.begin());
+    if (num_tokens < app_ctx->enc_len) {
+        normalized_tokens[num_tokens] = app_ctx->eos_token_id;
+    }
 
-    // replace trailing tokens with eos, then pad tokens
-    std::ostringstream token_stream;
-    token_stream << "Token stream: ";
-    for (int i = 0; i < app_ctx->enc_len; i++) {
-        if (i < input_token_give) {
-            // copy original token
-            input_token_sorted[i] = input_token[i];
-        } else if (i == input_token_give) {
-            // terminate with <eos>
-            input_token_sorted[i] = app_ctx->eos_token_id;
-        } else {
-            // all other characters are <pad> tokens
-            input_token_sorted[i] = app_ctx->pad_token_id;
+    // log normalized token stream
+    if (Logger::verbose()) {
+        std::ostringstream token_stream;
+        token_stream << "Token stream: ";
+        for (const auto token : normalized_tokens) {
+            token_stream << token << " ";
         }
-        token_stream << std::to_string(input_token_sorted[i]) << " ";
+        LOG(VERBOSE) << token_stream.str();
     }
 
-    LOG(VERBOSE) << token_stream.str();
-
-    return input_token_sorted;
+    return normalized_tokens;
 }
 
 // Mask flow: 1s for input and EOS, then transitions to 0s for PAD tokens.
 std::vector<int32_t> build_attention_mask(
     const rknn_marian_rknn_context_t *app_ctx,
-    const std::vector<int32_t> &input_token_sorted)
+    const std::vector<int32_t> &normalized_tokens)
 {
-    std::vector<int32_t> attention_mask;
-    attention_mask.resize(app_ctx->enc_len, 0);
+    std::vector<int32_t> attention_mask(app_ctx->enc_len, 0);
 
-    std::ostringstream mask_stream;
-    mask_stream << "Generate attention mask:";
-    bool padding = false;
-    for (int i = 0; i < app_ctx->enc_len; i++) {
-        if (padding) {
-            attention_mask[i] = 0;
-        } else {
-            attention_mask[i] = 1;
-            if (input_token_sorted[i] == app_ctx->eos_token_id) {
+    // input tokens are marked with 1 until the first occurrence of EOS or PAD,
+    // after which all tokens are marked with 0
+    std::transform(
+        normalized_tokens.begin(),
+        normalized_tokens.end(),
+        attention_mask.begin(),
+        [app_ctx, padding = false](const int32_t token) mutable {
+            const int32_t mask = padding ? 0 : 1;
+            if (!padding && token == app_ctx->eos_token_id) {
                 padding = true;
             }
+            return mask;
         }
-        mask_stream << " " << attention_mask[i];
+    );
+
+    // log attention mask
+    if (Logger::verbose()) {
+        std::ostringstream mask_stream;
+        mask_stream << "Attention mask: ";
+        for (const auto mask : attention_mask) {
+            mask_stream << " " << mask;
+        }
+        LOG(VERBOSE) << mask_stream.str();
     }
-    LOG(VERBOSE) << mask_stream.str();
 
     return attention_mask;
 }
@@ -262,15 +260,13 @@ int rknn_nmt_process(
     int32_t* output_token,
     rknn_marian_inference_stats_t* stats)
 {
-    int ret = 0;
-
-    std::vector<int32_t> input_token_sorted = normalize_encoder_tokens(app_ctx, input_token, stats);
-    std::vector<int32_t> attention_mask = build_attention_mask(app_ctx, input_token_sorted);
+    std::vector<int32_t> normalized_tokens = normalize_encoder_tokens(app_ctx, input_token, stats);
+    std::vector<int32_t> attention_mask = build_attention_mask(app_ctx, normalized_tokens);
 
     LOG(VERBOSE) << "Copy input ids to encoder";
     memcpy(
         app_ctx->enc.input_mem[ENC_IN_INPUT_IDS_IDX]->virt_addr,
-        input_token_sorted.data(),
+        normalized_tokens.data(),
         app_ctx->enc.in_attr[ENC_IN_INPUT_IDS_IDX].size
     );
 
@@ -285,7 +281,7 @@ int rknn_nmt_process(
     TIMER timer;
     auto enc_start = std::chrono::steady_clock::now();
     timer.tik();
-    ret = rknn_run(app_ctx->enc.ctx, nullptr);
+    int ret = rknn_run(app_ctx->enc.ctx, nullptr);
     if (ret < 0) {
         LOG(ERROR) << "rknn_run failed. ret=" << ret;
         return -1;
