@@ -162,17 +162,25 @@ target_include_directories(${PROJECT_NAME}-benchmark PRIVATE
 
 add_executable(${PROJECT_NAME}-tests
     tests/file_utils_test.cc
+    tests/marian_rknn_test.cc
     src/file_utils.cc
     src/logger.cc
+    src/marian_rknn.cc
+    src/rknn_utils.cc
 )
 
 target_link_libraries(${PROJECT_NAME}-tests PRIVATE
+    ${LIBRKNNRT}
+    Eigen3::Eigen
     GTest::gtest_main
     nlohmann_json::nlohmann_json
+    sentencepiece
 )
 
 target_include_directories(${PROJECT_NAME}-tests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${LIBRKNNRT_INCLUDES}
+    ${LIBSENTENCEPIECE_INCLUDES}
 )
 
 message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")

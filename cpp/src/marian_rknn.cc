@@ -39,6 +39,8 @@
 
 using json = nlohmann::json;
 
+namespace {
+
 enum class EncoderInput : int
 {
     InputIds = 0,
@@ -62,6 +64,14 @@ enum class DecoderOutput : int
     DecoderOutput = 0
 };
 
+template<typename EnumType>
+constexpr int to_index(const EnumType input)
+{
+    return static_cast<int>(input);
+}
+
+}  // namespace
+
 void rknn_marian_lm_head_t::operator()(const float* hidden, float* out_logits) const
 {
     // map inputs
@@ -73,14 +83,6 @@ void rknn_marian_lm_head_t::operator()(const float* hidden, float* out_logits) c
     Eigen::Map<Eigen::Matrix<float, 1, Eigen::Dynamic>> y(out_logits, V);
     y.noalias() = h * W;
     y += bias;
-}
-
-namespace {
-
-template<typename EnumType>
-constexpr int to_index(const EnumType input)
-{
-    return static_cast<int>(input);
 }
 
 int greedy_decode(
@@ -379,8 +381,6 @@ int validate_sequence_lengths(const rknn_marian_rknn_context_t* app_ctx)
 
     return 0;
 }
-
-}  // namespace
 
 int init_marian_rknn_model(const std::string &model_dir, rknn_marian_rknn_context_t *app_ctx)
 {

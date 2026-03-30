@@ -113,3 +113,14 @@ int inference_marian_rknn_model(
     const std::string &input_sentence,
     std::string &output_sentence,
     rknn_marian_inference_stats_t* stats);
+
+// exposed for testing:
+
+std::vector<int32_t> build_attention_mask(
+    const rknn_marian_rknn_context_t *app_ctx,
+    const std::vector<int32_t> &normalized_tokens);
+
+std::vector<int32_t> normalize_encoder_tokens(
+    const rknn_marian_rknn_context_t* app_ctx,
+    const int32_t* input_tokens,
+    rknn_marian_inference_stats_t* stats);
