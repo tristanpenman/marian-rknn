@@ -11,3 +11,4 @@ CMakeCache.txt
 datasets/eval
 models/*
 outs
+venv
