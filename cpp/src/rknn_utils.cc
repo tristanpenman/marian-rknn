@@ -89,6 +89,25 @@ int rknn_utils_query_model_info(MODEL_INFO* model_info)
     model_info->n_input = io_num.n_input;
     model_info->n_output = io_num.n_output;
 
+    model_info->is_dyn_shape = false;
+    for (uint32_t i = 0; i < io_num.n_input; i++) {
+        rknn_input_range input_range = {};
+        input_range.index = i;
+
+        ret = rknn_query(model_info->ctx, RKNN_QUERY_INPUT_DYNAMIC_RANGE, &input_range, sizeof(input_range));
+        if (ret != RKNN_SUCC) {
+            LOG(VERBOSE) << "No input dynamic range for input index " << i << ". ret=" << ret;
+            continue;
+        }
+
+        if (input_range.shape_number > 1) {
+            model_info->is_dyn_shape = true;
+            LOG(ERROR) << "Dynamically shaped RKNN models are not supported. Input \"" << input_range.name
+                       << "\" has " << input_range.shape_number << " possible input shapes.";
+            return -1;
+        }
+    }
+
     model_info->inputs = (rknn_input*)malloc(sizeof(rknn_input) * model_info->n_input);
     model_info->in_attr = (rknn_tensor_attr*)malloc(sizeof(rknn_tensor_attr) * model_info->n_input);
     model_info->in_attr_native = (rknn_tensor_attr*)malloc(sizeof(rknn_tensor_attr) * model_info->n_input);
