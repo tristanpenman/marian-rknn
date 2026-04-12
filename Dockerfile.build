@@ -4,7 +4,6 @@ FROM --platform=linux/amd64 debian:trixie-slim@sha256:e711a7b30ec1261130d0a12105
 
 ENV DEBIAN_FRONTEND="noninteractive"
 
-# Install system CA certificates
 RUN apt-get update \
     && apt-get -y install --no-install-recommends \
         ca-certificates \

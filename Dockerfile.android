@@ -1,0 +1,42 @@
+# check=skip=FromPlatformFlagConstDisallowed
+
+FROM --platform=linux/amd64 debian:trixie-slim@sha256:e711a7b30ec1261130d0a121050b4ed81d7fb28aeabcf4ea0c7876d4e9f5aca2
+
+ENV DEBIAN_FRONTEND="noninteractive"
+
+RUN apt-get update \
+    && apt-get -y install --no-install-recommends \
+        build-essential \
+        ca-certificates \
+        curl \
+        git \
+        make \
+        ninja-build \
+        openjdk-21-jdk-headless \
+        python3 \
+        unzip \
+        wget \
+    && apt-get clean
+
+# Environment
+ENV ANDROID_HOME=/opt/android-sdk
+ENV ANDROID_NDK_VERSION=29.0.14206865
+ENV ANDROID_NDK_HOME=${ANDROID_HOME}/ndk/${ANDROID_NDK_VERSION}
+ENV CMAKE_VERSION=3.31.6
+ENV PATH=${PATH}:${ANDROID_HOME}/cmdline-tools/latest/bin:${ANDROID_HOME}/platform-tools
+
+# Android SDK
+ARG SDK_TOOLS_VERSION=11076708
+RUN mkdir -p ${ANDROID_HOME}/cmdline-tools && \
+    wget -q https://dl.google.com/android/repository/commandlinetools-linux-${SDK_TOOLS_VERSION}_latest.zip -O /tmp/tools.zip && \
+    unzip -q /tmp/tools.zip -d ${ANDROID_HOME}/cmdline-tools && \
+    mv ${ANDROID_HOME}/cmdline-tools/cmdline-tools ${ANDROID_HOME}/cmdline-tools/latest && \
+    rm /tmp/tools.zip
+
+# Accept licenses and install NDK
+RUN yes | sdkmanager --licenses && \
+    sdkmanager "ndk;${ANDROID_NDK_VERSION}" "cmake;${CMAKE_VERSION}" "platform-tools"
+
+ENV PATH=${PATH}:${ANDROID_HOME}/cmake/${CMAKE_VERSION}/bin
+
+WORKDIR /workspace

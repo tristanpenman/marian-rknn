@@ -1,4 +1,12 @@
 services:
+  android:
+    build:
+      context: .
+      dockerfile: Dockerfile.android
+    platform: linux/amd64
+    volumes:
+      - .:/workspace
+
   build:
     build:
       context: .

@@ -30,16 +30,37 @@ IF(CMAKE_COMPILER_IS_GNUCC)
     set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -O0")
 ENDIF(CMAKE_COMPILER_IS_GNUCC)
 
-# Set target architecture
-set(TARGET_LIB_ARCH aarch64)
+option(MARIAN_RKNN_BUILD_BENCHMARK "Build benchmark executable" ON)
+
+if(ANDROID)
+    set(MARIAN_RKNN_TARGET ${CMAKE_ANDROID_ARCH_ABI})
+    set(DEFAULT_RKNN_RUNTIME_LIB
+        ${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty/rknpu2/lib-android/${MARIAN_RKNN_TARGET}/librknnrt.so)
+else()
+    set(MARIAN_RKNN_TARGET aarch64)
+    set(DEFAULT_RKNN_RUNTIME_LIB
+        ${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty/rknpu2/lib/${MARIAN_RKNN_TARGET}/librknnrt.so)
+endif()
+
+set(RKNN_RUNTIME_LIB ${DEFAULT_RKNN_RUNTIME_LIB} CACHE FILEPATH
+    "Path to librknnrt.so for the selected target")
+set(RKNN_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty/rknpu2/include CACHE PATH
+    "Path containing rknn_api.h")
+
+if(NOT EXISTS ${RKNN_RUNTIME_LIB})
+    message(FATAL_ERROR
+        "RKNN runtime library not found: ${RKNN_RUNTIME_LIB}. "
+        "Set -DRKNN_RUNTIME_LIB=<path-to-librknnrt.so> (for Android use arm64-v8a runtime).")
+endif()
+
+if(NOT EXISTS ${RKNN_INCLUDE_DIR}/rknn_api.h)
+    message(FATAL_ERROR
+        "RKNN headers not found in ${RKNN_INCLUDE_DIR}. "
+        "Set -DRKNN_INCLUDE_DIR=<path-containing-rknn_api.h>.")
+endif()
 
 # Avoid building shared libraries
 set(BUILD_SHARED_LIBS OFF)
-
-# RKNN SDK
-set(RKNN_PATH ${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty/rknpu2)
-set(LIBRKNNRT ${RKNN_PATH}/lib/${TARGET_LIB_ARCH}/librknnrt.so)
-set(LIBRKNNRT_INCLUDES ${RKNN_PATH}/include)
 
 # -----------------------------------------------------------------------------
 # Eigen
@@ -60,20 +81,6 @@ FetchContent_Declare(nlohmann_json
     GIT_TAG v3.12.0
 )
 FetchContent_MakeAvailable(nlohmann_json)
-
-# -----------------------------------------------------------------------------
-# GoogleTest
-# -----------------------------------------------------------------------------
-
-set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
-set(BUILD_GMOCK OFF CACHE BOOL "" FORCE)
-set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
-
-FetchContent_Declare(googletest
-    GIT_REPOSITORY https://github.com/google/googletest.git
-    GIT_TAG v1.17.0
-)
-FetchContent_MakeAvailable(googletest)
 
 # -----------------------------------------------------------------------------
 # SentencePiece
@@ -97,25 +104,42 @@ target_compile_options(sentencepiece-static PRIVATE
     $<$<CXX_COMPILER_ID:GNU>:-Wno-stringop-overflow>
 )
 
+set(MARIAN_COMMON_SOURCES
+    src/file_utils.cc
+    src/logger.cc
+    src/marian_rknn.cc
+    src/rknn_utils.cc
+)
+
+set(MARIAN_COMMON_LIBS
+    ${RKNN_RUNTIME_LIB}
+    Eigen3::Eigen
+    nlohmann_json::nlohmann_json
+    sentencepiece
+)
+
+if(ANDROID)
+    list(APPEND MARIAN_COMMON_LIBS log)
+else()
+    list(APPEND MARIAN_COMMON_LIBS dl)
+endif()
+
+set(MARIAN_COMMON_INCLUDES
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${RKNN_INCLUDE_DIR}
+    ${LIBSENTENCEPIECE_INCLUDES}
+)
+
 # -----------------------------------------------------------------------------
 # Main executable
 # -----------------------------------------------------------------------------
 
 add_executable(${PROJECT_NAME}
-    src/file_utils.cc
-    src/logger.cc
     src/main.cc
-    src/marian_rknn.cc
-    src/rknn_utils.cc
+    ${MARIAN_COMMON_SOURCES}
 )
 
-target_link_libraries(${PROJECT_NAME} PRIVATE
-    ${LIBRKNNRT}
-    dl
-    Eigen3::Eigen
-    nlohmann_json::nlohmann_json
-    sentencepiece
-)
+target_link_libraries(${PROJECT_NAME} PRIVATE ${MARIAN_COMMON_LIBS})
 
 # Strip debug symbols from release builds
 target_link_options(${PROJECT_NAME} PRIVATE
@@ -123,65 +147,59 @@ target_link_options(${PROJECT_NAME} PRIVATE
 )
 
 target_include_directories(${PROJECT_NAME} PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/src
-    ${LIBRKNNRT_INCLUDES}
-    ${LIBSENTENCEPIECE_INCLUDES}
-    ${LIBTIMER_INCLUDES}
+    ${MARIAN_COMMON_INCLUDES}
 )
 
 # -----------------------------------------------------------------------------
 # Benchmark
 # -----------------------------------------------------------------------------
 
-add_executable(${PROJECT_NAME}-benchmark
-    src/benchmark.cc
-    src/file_utils.cc
-    src/logger.cc
-    src/marian_rknn.cc
-    src/rknn_utils.cc
-)
+if(MARIAN_RKNN_BUILD_BENCHMARK)
+    add_executable(${PROJECT_NAME}-benchmark
+        src/benchmark.cc
+        ${MARIAN_COMMON_SOURCES}
+    )
 
-target_link_libraries(${PROJECT_NAME}-benchmark PRIVATE
-    ${LIBRKNNRT}
-    dl
-    Eigen3::Eigen
-    nlohmann_json::nlohmann_json
-    sentencepiece
-)
+    target_link_libraries(${PROJECT_NAME}-benchmark PRIVATE ${MARIAN_COMMON_LIBS})
 
-target_include_directories(${PROJECT_NAME}-benchmark PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/src
-    ${LIBRKNNRT_INCLUDES}
-    ${LIBSENTENCEPIECE_INCLUDES}
-    ${LIBTIMER_INCLUDES}
-)
+    target_include_directories(${PROJECT_NAME}-benchmark PRIVATE
+        ${MARIAN_COMMON_INCLUDES}
+    )
+endif()
 
 # -----------------------------------------------------------------------------
 # Tests
 # -----------------------------------------------------------------------------
 
-add_executable(${PROJECT_NAME}-tests
-    tests/file_utils_test.cc
-    tests/marian_rknn_test.cc
-    src/file_utils.cc
-    src/logger.cc
-    src/marian_rknn.cc
-    src/rknn_utils.cc
-)
+include(CTest)
+if(BUILD_TESTING AND NOT ANDROID)
+    set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+    set(BUILD_GMOCK OFF CACHE BOOL "" FORCE)
+    set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
 
-target_link_libraries(${PROJECT_NAME}-tests PRIVATE
-    ${LIBRKNNRT}
-    Eigen3::Eigen
-    GTest::gtest_main
-    nlohmann_json::nlohmann_json
-    sentencepiece
-)
+    FetchContent_Declare(googletest
+        GIT_REPOSITORY https://github.com/google/googletest.git
+        GIT_TAG v1.17.0
+    )
+    FetchContent_MakeAvailable(googletest)
 
-target_include_directories(${PROJECT_NAME}-tests PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/src
-    ${LIBRKNNRT_INCLUDES}
-    ${LIBSENTENCEPIECE_INCLUDES}
-)
+    add_executable(${PROJECT_NAME}-tests
+        tests/file_utils_test.cc
+        tests/marian_rknn_test.cc
+        ${MARIAN_COMMON_SOURCES}
+    )
+
+    target_link_libraries(${PROJECT_NAME}-tests PRIVATE
+        ${MARIAN_COMMON_LIBS}
+        GTest::gtest_main
+    )
+
+    target_include_directories(${PROJECT_NAME}-tests PRIVATE
+        ${MARIAN_COMMON_INCLUDES}
+    )
+endif()
 
 message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 message(STATUS "Generator: ${CMAKE_GENERATOR} (multi-config: ${isMultiConfig})")
+message(STATUS "Target: ${MARIAN_RKNN_TARGET}")
+message(STATUS "RKNN runtime: ${RKNN_RUNTIME_LIB}")
