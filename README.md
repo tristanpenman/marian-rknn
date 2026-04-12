@@ -29,7 +29,9 @@ This README is intended both as a tutorial and a usage guide for the scripts in 
   * [Cross-Compilation](#cross-compilation)
   * [Release Builds](#release-builds)
   * [Benchmarking (Native)](#benchmarking-native)
-  * [Android 14 (Khadas Edge2 / RK3588S)](#android-14-khadas-edge2--rk3588s)
+* [Android 14 (Khadas Edge2 / RK3588S)](#android-14-khadas-edge2--rk3588s)
+  * [NDK Build](#ndk-build)
+  * [Push and Run](#push-and-run)
 * [Evaluation](#evaluation)
   * [WMT Datasets](#wmt-datasets)
   * [Downloader](#downloader)
@@ -574,9 +576,11 @@ You can run the benchmark by passing a model directory, an input text file, and 
 ./marian-rknn-benchmark /path/to/model inputs.txt 30
 ```
 
-### Android 14 (Khadas Edge2 / RK3588S)
+## Android 14 (Khadas Edge2 / RK3588S)
 
 The C++ runtime can also be built for Android, following the same pattern used in Rockchip's official Android demos in the [RKNN Model Zoo](https://github.com/airockchip/rknn_model_zoo) (notably `build-android.sh` and C API examples).
+
+### NDK Build
 
 Build and run the Android build container using Docker Compose:
 
@@ -603,8 +607,27 @@ This build script configures CMake with:
 - `-DCMAKE_TOOLCHAIN_FILE=<ndk>/build/cmake/android.toolchain.cmake`
 - `-DRKNN_RUNTIME_LIB=<...>/librknnrt.so`
 
-Artifacts are written to `cpp/build-android/`.
+### Push and Run
 
+Artifacts are written to `cpp/build-android/`. These can be pushed to a device using `adb`:
+
+```bash
+adb push cpp/build-android/marian-rknn /data/local/tmp
+adb push thirdparty/rknpu2/lib-android/arm64-v8a/librknnrt.so /data/local/tmp
+```
+
+You'll also need push model files, e.g:
+
+```bash
+adb push outs/dd7f6540a7a48a7f4db59e5c0b9c42c8eea67f18 /data/local/tmp
+```
+
+On the device, you will need to override `LD_LIBRARY_PATH`:
+
+```bash
+LD_LIBRARY_PATH=$LD_LIBRARY_PATH:`pwd` \
+  ./marian-rknn dd7f6540a7a48a7f4db59e5c0b9c42c8eea67f18/
+```
 
 ## Evaluation
 
