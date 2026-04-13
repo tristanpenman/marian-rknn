@@ -1,4 +1,4 @@
-name: Build C++ Binary
+name: Build C++ Binaries
 
 on:
   workflow_dispatch:
@@ -6,17 +6,44 @@ on:
     paths:
       - cpp/**
       - thirdparty/**
+      - Dockerfile.android
       - Dockerfile.build
-      - .github/workflows/cpp-build.yml
+      - .github/workflows/build.yml
   pull_request:
     paths:
       - cpp/**
       - thirdparty/**
+      - Dockerfile.android
       - Dockerfile.build
-      - .github/workflows/cpp-build.yml
+      - .github/workflows/build.yml
 
 jobs:
-  build-cpp:
+  build-android:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build Android container
+        run: |
+          docker build -t marian-rknn-android -f Dockerfile.android .
+
+      - name: Build Android binary
+        run: |
+          docker run --rm \
+            -v "$PWD":/workspace \
+            marian-rknn-android \
+            bash -c "cpp/scripts/android-build.sh"
+
+      - name: Upload Android marian-rknn binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: marian-rknn-android-arm64-v8a
+          path: cpp/build-android/marian-rknn
+          if-no-files-found: error
+
+  build-linux:
     runs-on: ubuntu-latest
 
     steps:
@@ -37,6 +64,6 @@ jobs:
       - name: Upload marian-rknn binary
         uses: actions/upload-artifact@v4
         with:
-          name: marian-rknn
+          name: marian-rknn-linux-aarch64
           path: cpp/build/marian-rknn
           if-no-files-found: error
