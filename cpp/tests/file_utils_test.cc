@@ -42,7 +42,6 @@ TEST(FileUtilsTest, ReadMapFromFileParsesJsonObject)
     std::remove(path.c_str());
 }
 
-
 TEST(FileUtilsTest, JoinPathWithRootDirectory)
 {
     EXPECT_EQ(join_path("/", "file.txt"), "/file.txt");

@@ -15,7 +15,6 @@
 
 #include <algorithm>
 #include <chrono>
-#include <cmath>
 #include <fstream>
 #include <sstream>
 #include <vector>
@@ -99,8 +98,8 @@ int greedy_decode(
     // output starts with pad token
     std::fill_n(output_token, app_ctx->dec_len, app_ctx->pad_token_id);
 
-    TIMER timer;
-    TIMER timer_total;
+    EasyTimer timer;
+    EasyTimer timer_total;
     timer_total.tik();
     for (int num_iter = 0; num_iter < app_ctx->dec_len - 1; num_iter++) {
         LOG(VERBOSE) << "Decoder iteration " << num_iter;
@@ -294,7 +293,7 @@ int rknn_nmt_process(
     );
 
     LOG(VERBOSE) << "Run encoder";
-    TIMER timer;
+    EasyTimer timer;
     auto enc_start = std::chrono::steady_clock::now();
     timer.tik();
     int ret = rknn_run(app_ctx->enc.ctx, nullptr);

@@ -55,7 +55,7 @@ int main(const int argc, char **argv)
         return -1;
     }
 
-    TIMER timer;
+    EasyTimer timer;
     bool is_receipt = false;
     const char *model_dir = positional_args[0];
 

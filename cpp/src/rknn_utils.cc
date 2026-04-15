@@ -108,22 +108,22 @@ int rknn_utils_query_model_info(MODEL_INFO* model_info)
         }
     }
 
-    model_info->inputs = (rknn_input*)malloc(sizeof(rknn_input) * model_info->n_input);
-    model_info->in_attr = (rknn_tensor_attr*)malloc(sizeof(rknn_tensor_attr) * model_info->n_input);
-    model_info->in_attr_native = (rknn_tensor_attr*)malloc(sizeof(rknn_tensor_attr) * model_info->n_input);
-    model_info->input_mem = (rknn_tensor_mem**)malloc(sizeof(rknn_tensor_mem*) * model_info->n_input);
-    model_info->rknn_input_param = (RKNN_UTILS_INPUT_PARAM*)malloc(sizeof(RKNN_UTILS_INPUT_PARAM) * model_info->n_input);
+    model_info->inputs = static_cast<rknn_input *>(malloc(sizeof(rknn_input) * model_info->n_input));
+    model_info->in_attr = static_cast<rknn_tensor_attr *>(malloc(sizeof(rknn_tensor_attr) * model_info->n_input));
+    model_info->in_attr_native = static_cast<rknn_tensor_attr *>(malloc(sizeof(rknn_tensor_attr) * model_info->n_input));
+    model_info->input_mem = static_cast<rknn_tensor_mem **>(malloc(sizeof(rknn_tensor_mem *) * model_info->n_input));
+    model_info->rknn_input_param = static_cast<RKNN_UTILS_INPUT_PARAM *>(malloc(sizeof(RKNN_UTILS_INPUT_PARAM) * model_info->n_input));
 
     for (int i = 0; i < model_info->n_input; i++) {
         memset(&(model_info->inputs[i]), 0, sizeof(rknn_input));
         memset(&(model_info->rknn_input_param[i]), 0, sizeof(RKNN_UTILS_INPUT_PARAM));
     }
 
-    model_info->outputs = (rknn_output*)malloc(sizeof(rknn_output) * model_info->n_output);
-    model_info->out_attr = (rknn_tensor_attr*)malloc(sizeof(rknn_tensor_attr) * model_info->n_output);
-    model_info->out_attr_native = (rknn_tensor_attr*)malloc(sizeof(rknn_tensor_attr) * model_info->n_output);
-    model_info->output_mem = (rknn_tensor_mem**)malloc(sizeof(rknn_tensor_mem*) * model_info->n_output);
-    model_info->rknn_output_param = (RKNN_UTILS_OUTPUT_PARAM*)malloc(sizeof(RKNN_UTILS_OUTPUT_PARAM) * model_info->n_output);
+    model_info->outputs = static_cast<rknn_output *>(malloc(sizeof(rknn_output) * model_info->n_output));
+    model_info->out_attr = static_cast<rknn_tensor_attr *>(malloc(sizeof(rknn_tensor_attr) * model_info->n_output));
+    model_info->out_attr_native = static_cast<rknn_tensor_attr *>(malloc(sizeof(rknn_tensor_attr) * model_info->n_output));
+    model_info->output_mem = static_cast<rknn_tensor_mem **>(malloc(sizeof(rknn_tensor_mem *) * model_info->n_output));
+    model_info->rknn_output_param = static_cast<RKNN_UTILS_OUTPUT_PARAM *>(malloc(sizeof(RKNN_UTILS_OUTPUT_PARAM) * model_info->n_output));
 
     for (int i = 0; i < model_info->n_output; i++) {
         memset(&(model_info->outputs[i]), 0, sizeof(rknn_output));
