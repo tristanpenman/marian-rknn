@@ -7,14 +7,14 @@ on:
       - cpp/**
       - thirdparty/**
       - Dockerfile.android
-      - ../../Dockerfile.native
+      - Dockerfile.native
       - .github/workflows/build.yml
   pull_request:
     paths:
       - cpp/**
       - thirdparty/**
       - Dockerfile.android
-      - ../../Dockerfile.native
+      - Dockerfile.native
       - .github/workflows/build.yml
 
 jobs:
@@ -34,13 +34,13 @@ jobs:
           docker run --rm \
             -v "$PWD":/workspace \
             marian-rknn-android \
-            bash -c "cpp/scripts/android-build.sh"
+            bash -c "scripts/android-build.sh"
 
       - name: Upload Android marian-rknn binary
         uses: actions/upload-artifact@v4
         with:
           name: marian-rknn-android-arm64-v8a
-          path: cpp/build-android/marian-rknn
+          path: build-android/marian-rknn
           if-no-files-found: error
 
   build-linux:
@@ -52,18 +52,18 @@ jobs:
 
       - name: Build container
         run: |
-          docker build -t marian-rknn-build -f Dockerfile.build .
+          docker build -t marian-rknn-native -f Dockerfile.native .
 
       - name: Configure and build
         run: |
           docker run --rm \
             -v "$PWD":/workspace \
-            marian-rknn-build \
-            bash -c "cmake -S cpp -B cpp/build -DCMAKE_BUILD_TYPE=Release && cmake --build cpp/build --config Release"
+            marian-rknn-native \
+            bash -c "cmake -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build --config Release"
 
       - name: Upload marian-rknn binary
         uses: actions/upload-artifact@v4
         with:
           name: marian-rknn-linux-aarch64
-          path: cpp/build/marian-rknn
+          path: build/marian-rknn
           if-no-files-found: error
