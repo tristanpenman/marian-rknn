@@ -35,16 +35,16 @@ option(MARIAN_RKNN_BUILD_BENCHMARK "Build benchmark executable" ON)
 if(ANDROID)
     set(MARIAN_RKNN_TARGET ${CMAKE_ANDROID_ARCH_ABI})
     set(DEFAULT_RKNN_RUNTIME_LIB
-        ${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty/rknpu2/lib-android/${MARIAN_RKNN_TARGET}/librknnrt.so)
+        ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/rknpu2/lib-android/${MARIAN_RKNN_TARGET}/librknnrt.so)
 else()
     set(MARIAN_RKNN_TARGET aarch64)
     set(DEFAULT_RKNN_RUNTIME_LIB
-        ${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty/rknpu2/lib/${MARIAN_RKNN_TARGET}/librknnrt.so)
+        ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/rknpu2/lib/${MARIAN_RKNN_TARGET}/librknnrt.so)
 endif()
 
 set(RKNN_RUNTIME_LIB ${DEFAULT_RKNN_RUNTIME_LIB} CACHE FILEPATH
     "Path to librknnrt.so for the selected target")
-set(RKNN_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty/rknpu2/include CACHE PATH
+set(RKNN_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/rknpu2/include CACHE PATH
     "Path containing rknn_api.h")
 
 if(NOT EXISTS ${RKNN_RUNTIME_LIB})
@@ -105,10 +105,10 @@ target_compile_options(sentencepiece-static PRIVATE
 )
 
 set(MARIAN_COMMON_SOURCES
-    src/file_utils.cc
-    src/logger.cc
-    src/marian_rknn.cc
-    src/rknn_utils.cc
+    cpp/src/file_utils.cc
+    cpp/src/logger.cc
+    cpp/src/marian_rknn.cc
+    cpp/src/rknn_utils.cc
 )
 
 set(MARIAN_COMMON_LIBS
@@ -125,7 +125,7 @@ else()
 endif()
 
 set(MARIAN_COMMON_INCLUDES
-    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_SOURCE_DIR}/cpp/src
     ${RKNN_INCLUDE_DIR}
     ${LIBSENTENCEPIECE_INCLUDES}
 )
@@ -135,7 +135,7 @@ set(MARIAN_COMMON_INCLUDES
 # -----------------------------------------------------------------------------
 
 add_executable(${PROJECT_NAME}
-    src/main.cc
+    cpp/src/main.cc
     ${MARIAN_COMMON_SOURCES}
 )
 
@@ -156,7 +156,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE
 
 if(MARIAN_RKNN_BUILD_BENCHMARK)
     add_executable(${PROJECT_NAME}-benchmark
-        src/benchmark.cc
+        cpp/src/benchmark.cc
         ${MARIAN_COMMON_SOURCES}
     )
 
@@ -184,8 +184,8 @@ if(BUILD_TESTING AND NOT ANDROID)
     FetchContent_MakeAvailable(googletest)
 
     add_executable(${PROJECT_NAME}-tests
-        tests/file_utils_test.cc
-        tests/marian_rknn_test.cc
+        cpp/tests/file_utils_test.cc
+        cpp/tests/marian_rknn_test.cc
         ${MARIAN_COMMON_SOURCES}
     )
 

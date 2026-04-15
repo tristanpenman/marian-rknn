@@ -7,10 +7,10 @@ services:
     volumes:
       - .:/workspace
 
-  build:
+  native:
     build:
       context: .
-      dockerfile: Dockerfile.build
+      dockerfile: Dockerfile.native
     platform: linux/amd64
     volumes:
       - .:/workspace
@@ -19,7 +19,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.python
-    command: python scripts/preflight.py --device cpu --model-name Helsinki-NLP/opus-mt-en-fr
     platform: linux/amd64
     volumes:
       - .:/workspace

@@ -1,8 +1,8 @@
 # Marian RKNN
 
-This repo contains Python and C++ implementations of MarianMT that run on Rockchip NPU (RKNN) devices. It also includes Python scripts and step-by-step instructions to assist with the model conversion process.
+This repo contains Python and C++ implementations of MarianMT that run on Rockchip NPU (RKNN) devices. It also includes Python code and step-by-step instructions to assist with the model conversion process.
 
-This README is intended both as a tutorial and a usage guide for the scripts in this repo.
+This README is intended both as a tutorial and a usage guide for the code in this repo.
 
 ### Contents
 
@@ -10,11 +10,10 @@ This README is intended both as a tutorial and a usage guide for the scripts in 
   * [MarianNMT](#mariannmt)
   * [MarianMT](#marianmt)
   * [Key Challenges](#key-challenges)
-* [Hugging Face](#hugging-face)
-  * [Preflight](#preflight)
-  * [Prerequisites](#prerequisites)
-  * [Docker (CPU-only preflight)](#docker-cpu-only-preflight)
+  * [Hugging Face](#hugging-face)
+* [Prerequisites](#prerequisites)
   * [Docker Compose](#docker-compose)
+  * [Preflight](#preflight)
 * [Conversion](#conversion)
   * [Get Model Path](#get-model-path)
   * [Export to ONNX](#export-to-onnx)
@@ -57,52 +56,21 @@ GPU support can be enabled if CUDA and cuDNN are available. However, this does n
 
 MarianMT is a PyTorch implementation and collection of pretrained models that have been trained on a large number of datasets and language pairs. Pretrained models are available on [Hugging Face](https://huggingface.co/Helsinki-NLP/models). This includes encoder-decoder checkpoints and tokenizers.
 
-Being a PyTorch implementation is valuable, because we can convert that to ONNX, then to RKNN format.
+Being a PyTorch implementation is valuable because we can convert that to ONNX, then to RKNN format.
 
 ### Key Challenges
 
-Adapting MarianMT models for Rockchip NPUs involves several challenges. Rockchip's RKNN toolchain expects static computation graphs, so dynamic control flow and variable sequence lengths must be converted during ONNX export.
+Adapting MarianMT models for Rockchip NPUs involves several challenges. The Rockchip RKNN API has limited support for dynamic graph operations. Inputs that use variable sequence lengths must be 'unrolled' during ONNX export.
 
 The NPU also has a limited set of supported operators, meaning unsupported layers need to be reimplemented or approximated with the primitives that are available. Finally, RKNN memory and quantization constraints require calibration and profiling to preserve accuracy once deployed on the target device.
 
-## Hugging Face
+### Hugging Face
 
 Hugging Face hosts the official MarianMT checkpoints, tokenizers, and configuration files that seed our RKNN conversion workflow. We can use the `transformers` library to simplify downloading these artifacts, ensuring that the encoder, decoder, and vocabulary files remain synchronized across languages.
 
-### Preflight
+## Prerequisites
 
-The `preflight.py` script can be used to check that your system can download and run a pretrained model from Hugging Face. You can choose a device (e.g. CUDA) using the `--device <type>` argument, and a specific model using `--model-name <id>`.
-
-For example, to download the [OPUS English-to-French model](https://huggingface.co/Helsinki-NLP/opus-mt-en-fr) and run it on a CUDA device:
-
-```bash
-python scripts/preflight.py --device cuda --model-name Helsinki-NLP/opus-mt-en-fr
-```
-
-After downloading the model, this will drop you in a prompt where you can enter English text, which will then be translated to French:
-
-```
-Using device: cuda
-Using model: Helsinki-NLP/opus-mt-en-fr
-Enter text to translate (empty line to quit):
-> I am a fish
-Je suis un poisson
->
-```
-
-### Prerequisites
-
-Dependencies can be installed using `pip`:
-
-```bash
-pip install -r requirements.txt
-```
-
-This includes dependencies for scripts in submodules too.
-
-### Docker (CPU-only preflight)
-
-A lightweight Docker image has been provided for testing MarianMT on systems _without_ a GPU. The container uses a CPU-only PyTorch build to maximise compatibility.
+A lightweight Docker image has been provided for running the Python code provided by this repo.
 
 Build the image from the repository root:
 
@@ -110,35 +78,57 @@ Build the image from the repository root:
 docker build -f Dockerfile.python -t marian-rknn-python .
 ```
 
-You can then run the preflight check inside the container:
+You can then run a shell inside the container that has all the dependencies installed:
 
 ```bash
-docker run --rm -it marian-rknn-python -v "$PWD:/workspace" \
-  python scripts/preflight.py --device cpu --model-name Helsinki-NLP/opus-mt-en-fr
+docker run --rm -it marian-rknn-python -v "$PWD:/workspace" /bin/bash
 ```
+
+If you do not provide a command to run (e.g. `/bin/bash`) the container will run the preflight script, as described below. This will drop you into an interactive translation prompt.
 
 ### Docker Compose
 
-For an even easier time, you can use Docker Compose:
+For an even easier time, it is recommended that you use Docker Compose:
 
 ```bash
-docker compose run --build python
+docker compose run --build --rm python
 ```
 
-When the command is omitted this will automatically run the preflight script, and drop you into the interactive translator.
-
-The same Docker Compose command can be used to run arbitrary scripts inside the container, or even just to load a bash shell:
+The same Docker Compose command can be used to run arbitrary commands inside the container:
 
 ```bash
-docker compose run --build python /bin/bash
+docker compose run --build --rm python <cmd> <args...>
 ```
 
 > ![NOTE]
-> All of the commands listed below can be run within this shell.
+> All the commands listed below can be run within this shell.
+> 
+> The remainder of this guide assumes that you are running commands from inside the Docker container.
+
+### Preflight
+
+Once you have the Docker container running, you can use the [preflight.py](python/marian_rknn/preflight.py) script to download and run a pretrained model from Hugging Face.
+
+You can choose a specific model using `--model-name <id>`. For example, to download the [OPUS English-to-French model](https://huggingface.co/Helsinki-NLP/opus-mt-en-fr):
+
+```bash
+python -m marian_rknn.preflight --model-name Helsinki-NLP/opus-mt-en-fr
+```
+
+After downloading the model, this will drop you in a prompt where you can enter English text to be translated to French:
+
+```
+Using device: cpu
+Using model: Helsinki-NLP/opus-mt-en-fr
+Enter text to translate (empty line to quit):
+> I am a fish
+Je suis un poisson
+>
+```
 
 ## Conversion
 
-After validating a model locally using the `preflight.py` script, you're ready to export the weights to ONNX, feed them into the RKNN conversion pipeline, and package the resulting artifacts for deployment on Rockchip devices.
+After downloading the model via the preflight script, you're ready to export the weights to ONNX, feed them into the RKNN conversion pipeline, and package the resulting artifacts for deployment on Rockchip devices.
 
 ### Get Model Path
 
@@ -156,11 +146,14 @@ The output will look something like this:
 
 This is the local path to the model.
 
+> [!WARNING]
+> 
+
 ### Export to ONNX
 
 The [Marian-ONNX-Converter](./Marian-ONNX-Converter) submodule contains an ONNX implementation of Marian. This includes a script for converting pretrained models from Hugging Face to ONNX format.
 
-If you haven't already, initialise the submodule:
+If you haven't already, fetch the submodule:
 
 ```bash
 git submodule update --init Marian-ONNX-Converter
@@ -187,7 +180,7 @@ python Marian-ONNX-Converter/convert.py \
   --no-quantize
 ```
 
-It's very important to specify `--no-quantize`. Failure to do so will produce a model graph that contains layers/operations that are not supported by RKNN. Quantization will be handled later, when converting to RKNN.
+It's crucial to specify `--no-quantize`. Failure to do so will produce a model graph that contains layers/operations that are not supported by RKNN. Quantization will be handled later when converting to RKNN.
 
 The output of `convert.py` will look like this:
 
@@ -217,7 +210,7 @@ total 227860
 -rw-r--r-- 1 root root   1339166 Oct 16 12:10 vocab.json
 ```
 
-We will later convert `decoder.onnx`, `encoder.onnx`, `lm_bias.bin` and `lm_weight.bin` into formats that can be used by our C++ RKNN implementation.
+We will later convert `decoder.onnx`, `encoder.onnx`, `lm_bias.bin` and `lm_weight.bin` into formats that can be used by our Python and C++ RKNN inference implementations.
 
 ### Verify ONNX
 
@@ -238,10 +231,10 @@ Je suis un poisson
 
 ### ONNX to RKNN
 
-Now we can convert the encoder and decoder from ONNX to RKNN. We can use our own [rknn_convert.py](scripts/rknn_convert.py) script for this, passing in the same model output path from earlier:
+Now we can convert the encoder and decoder from ONNX to RKNN using the [rknn_convert.py](python/marian_rknn/rknn_convert.py) script. Pass in the same model output path from earlier:
 
 ```bash
-python scripts/rknn_convert.py \
+python -m marian_rknn.rknn_convert \
   outs/dd7f6540a7a48a7f4db59e5c0b9c42c8eea67f18 rk3588
 ```
 
@@ -344,11 +337,11 @@ This is enough to confirm that the model is working.
 
 ## Inference
 
-To run the model on your Rockchip device, you will need to install some dependencies and copy across the converted model files.
+To run the model on your Rockchip device, you will need to install Python dependencies and copy across the converted model files.
 
 ### Dependencies
 
-It is recommended that you install Python dependencies in Python virtual environment on the Rockchip device. Start by creating the environment:
+It is recommended that you install Python dependencies in a Python virtual environment on the Rockchip device. Start by creating the environment:
 
 ```bash
 python3 -m venv venv
@@ -363,10 +356,11 @@ source venv/bin/activate
 Now you can install other packages using `pip`:
 
 ```bash
-pip install -r requirements.lite.txt
+cd python
+pip install -r python/requirements.lite.txt
 ```
 
-The most important dependency here is [RKNN Toolkit Lite](https://github.com/rockchip-linux/rknn-toolkit/tree/master/rknn-toolkit-lite) - a trimmed down version of the RKNN Toolkit with individual device / NPU support added.
+The most important dependency here is [RKNN Toolkit Lite](https://github.com/rockchip-linux/rknn-toolkit/tree/master/rknn-toolkit-lite) - a trimmed-down version of the RKNN Toolkit with individual device / NPU support added.
 
 ### Model Output
 
@@ -381,7 +375,7 @@ scp -r outs <edge2-ip>:~
 You can now run the inference script on the Rockchip device:
 
 ```bash
-python scripts/rknn_infer.py
+python -m marian_rknn.rknn_infer
 ```
 
 When no arguments are provided, this script will simply print out usage information. You can use `-h` to get more detailed information:
@@ -409,7 +403,7 @@ options:
 We'll just use the model output files that we copied above:
 
 ```bash
-python scripts/rknn_infer.py ~/outs/dd7f6540a7a48a7f4db59e5c0b9c42c8eea67f18
+python -m marian_rknn.rknn_infer ~/outs/dd7f6540a7a48a7f4db59e5c0b9c42c8eea67f18
 ```
 
 While loading, the output should look something like this:
@@ -447,8 +441,8 @@ The last thing worth mentioning is support for [Beam Search](https://en.wikipedi
 This can be enabled using the `--beam-search` option. The beam depth and beam width can also be configured using command line arguments:
 
 ```bash
-python scripts/rknn_infer.py --beam-search --beam-width 3 \
-  outs/dd7f6540a7a48a7f4db59e5c0b9c42c8eea67f18
+python -m marian_rknn.rknn_infer --beam-search --beam-width 3 \
+  ../outs/dd7f6540a7a48a7f4db59e5c0b9c42c8eea67f18
 ```
 
 ### Benchmarking
@@ -456,7 +450,7 @@ python scripts/rknn_infer.py --beam-search --beam-width 3 \
 To run the Python benchmark wrapper, provide a model path, a text file containing a range of input sentences, and a maximum runtime (in seconds). The benchmark will loop over the inputs until the time budget is reached and will report aggregate throughput and per-stage timings:
 
 ```bash
-python scripts/benchmark.py \
+python -m marian_rknn.benchmark \
   outs/dd7f6540a7a48a7f4db59e5c0b9c42c8eea67f18 \
   datasets/en-phrases.txt \
   120
@@ -487,7 +481,7 @@ Output tokens/sec: 22.776
 Beam search options are supported for benchmarking as well:
 
 ```bash
-python scripts/benchmark.py \
+python -m marian_rknn.benchmark \
   --beam-search \
   --beam-width 3 \
   outs/dd7f6540a7a48a7f4db59e5c0b9c42c8eea67f18 \
@@ -528,14 +522,14 @@ A native RKNN implementation of Marian MT can be found in the [cpp](./cpp) direc
 Build and run the container using Docker Compose:
 
 ```bash
-docker compose run --build build /bin/bash
+docker compose run --build native
 ```
 
-Compile the project using CMake:
+This will drop you into a bash shell. Now you can compile the project using CMake:
 
 ```bash
-mkdir -p cpp/build
-cd cpp/build
+mkdir -p build
+cd build
 cmake ..
 make
 ```
@@ -585,19 +579,19 @@ The C++ runtime can also be built for Android, following the same pattern used i
 Build and run the Android build container using Docker Compose:
 
 ```bash
-docker compose run --build android /bin/bash
+docker compose run --build android
 ```
 
-This includes the Android NDK and CMake. From inside the container:
+This includes the Android NDK and CMake. From inside the container you can build the project using a CMake wrapper script:
 
 ```bash
-cpp/scripts/android-build.sh Release
+./scripts/android-build.sh Release
 ```
 
 Or for a debug build:
 
 ```bash
-cpp/scripts/android-build.sh Debug
+./scripts/android-build.sh Debug
 ```
 
 This build script configures CMake with:
@@ -609,14 +603,14 @@ This build script configures CMake with:
 
 ### Push and Run
 
-Artifacts are written to `cpp/build-android/`. These can be pushed to a device using `adb`:
+Artifacts are written to `build-android`. These can be pushed to a device using `adb`:
 
 ```bash
-adb push cpp/build-android/marian-rknn /data/local/tmp
+adb push build-android/marian-rknn /data/local/tmp
 adb push thirdparty/rknpu2/lib-android/arm64-v8a/librknnrt.so /data/local/tmp
 ```
 
-You'll also need push model files, e.g:
+You'll also need to push model files:
 
 ```bash
 adb push outs/dd7f6540a7a48a7f4db59e5c0b9c42c8eea67f18 /data/local/tmp
@@ -656,12 +650,12 @@ The WMT datasets date back to 2006. However, it is common to use WMT16 or later 
 
 [SacreBLEU](https://github.com/mjpost/sacrebleu) includes utility functions that can be used to download WMT test sets, and to preprocess and tokenize the data so that it is ready for testing.
 
-As a convenience, the [downloader.py](scripts/downloader.py) script has been provided as a wrapper around SacreBLEU. It can be used to download and prepare WMT datasets. This script works with arbitrary language pairs, not just English-to-French.
+As a convenience, the [downloader.py](python/marian_rknn/downloader.py) script has been provided as a wrapper around SacreBLEU. It can be used to download and prepare WMT datasets. This script works with arbitrary language pairs, not just English-to-French.
 
 To inspect available test sets for `en-fr`:
 
 ```bash
-python scripts/downloader.py \
+python -m marian_rknn.downloader \
   --langpair en-fr \
   --list
 ```
@@ -681,7 +675,7 @@ Available test sets for en-fr:
 Coverage for English-to-French was reduced after 2015, so we'll download the `wmt14` and `wmt15` datasets, and save them to `datasets/eval`:
 
 ```bash
-python scripts/downloader.py \
+python -m marian_rknn.downloader \
   --langpair en-fr \
   --test-sets wmt14,wmt15 \
   --output-dir datasets/eval
@@ -698,7 +692,7 @@ A manifest file is also generated at `datasets/eval/manifest.en-fr.tsv` to make 
 
 ### BLEU and chrF
 
-The [eval.py](scripts/eval.py) script can be used to generate BLEU and chrF metrics for any of the downloaded datasets.
+The [eval.py](python/marian_rknn/eval.py) script can be used to generate BLEU and chrF metrics for any of the downloaded datasets.
 
 [BLEU](https://en.wikipedia.org/wiki/BLEU) (or _Bilingual Evaluation Understudy_) measures the similarity between text generated by a model, and a human-generated reference text by comparing word-level n-grams.
 
@@ -712,10 +706,10 @@ Any further work on this repo will likely revolve around optimisation. T
 
 Quantization aims to optimise the model for the Rockchip NPU by using INT8 weights and activations, instead of the default floating point (FP16) output from the RKNN build process. This depends on a calibration dataset (built using a full version of the model) which is used to choose quantization coefficients.
 
-An early attempt at quantization can be found in [scripts/rknn_quantize.py](./scripts/rknn_quantize.py). This works similar to the `rknn_convert.py` script:
+An early attempt at quantization can be found in [python/marian_rknn/rknn_quantize.py](./python/marian_rknn/rknn_quantize.py). This works similar to the `rknn_convert.py` script:
 
-```
-python scripts/rknn_quantize.py \
+```bash
+python -m marian_rknn.rknn_quantize \
   --calibration-data datasets/en-phrases.txt \
   outs/dd7f6540a7a48a7f4db59e5c0b9c42c8eea67f18 rk3588
 ```

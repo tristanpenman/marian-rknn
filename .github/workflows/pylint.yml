@@ -4,13 +4,13 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - scripts/**
+      - marian_rknn/**
       - requirements.txt
       - .github/workflows/pylint.yml
       - .pylintrc
   pull_request:
     paths:
-      - scripts/**
+      - marian_rknn/**
       - requirements.txt
       - .github/workflows/pylint.yml
       - .pylintrc

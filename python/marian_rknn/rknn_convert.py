@@ -4,9 +4,9 @@ import argparse
 import torch
 import numpy as np
 
-from rknn_infer import inference, load_config, DEFAULT_DEC_LEN, DEFAULT_ENC_LEN
-
 from rknn.api import RKNN
+
+from .rknn_infer import inference, load_config, DEFAULT_DEC_LEN, DEFAULT_ENC_LEN
 
 DECODER_INPUTS = ['input_ids', 'attention_mask', 'encoder_hidden_states']
 ENCODER_INPUTS = ['input_ids', 'attention_mask']

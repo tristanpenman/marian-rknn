@@ -4,11 +4,11 @@ import argparse
 from pathlib import Path
 import numpy as np
 
-from preprocess import iter_lines, process_calibration_data, resolve_special_token_ids, load_sentencepiece_model
-from rknn_infer import inference, load_config, load_vocab, DEFAULT_DEC_LEN, DEFAULT_ENC_LEN, prepare_encoder_inputs, build_attention_mask
-from rknn_convert import convert_model, convert_weights
 from rknn.api import RKNN
 
+from .preprocess import iter_lines, process_calibration_data, resolve_special_token_ids, load_sentencepiece_model
+from .rknn_infer import inference, load_config, load_vocab, DEFAULT_DEC_LEN, DEFAULT_ENC_LEN, prepare_encoder_inputs, build_attention_mask
+from .rknn_convert import convert_model, convert_weights
 
 DEFAULT_CALIBRATION_CACHE = "calibration"
 

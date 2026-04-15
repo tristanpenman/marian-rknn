@@ -7,9 +7,8 @@ ENV DEBIAN_FRONTEND=noninteractive \
     HF_HOME=/workspace/.cache/huggingface
 
 RUN apt-get update \
+    && apt-get upgrade -y \
     && apt-get install -y --no-install-recommends \
-        build-essential \
-        git \
         libgl1 \
         libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
@@ -18,12 +17,13 @@ WORKDIR /workspace
 
 ENV VIRTUAL_ENV=/opt/venv
 ENV PATH="$VIRTUAL_ENV/bin:$PATH"
+ENV PYTHONPATH=/workspace/python
 
-COPY requirements.txt /tmp/requirements.txt
+COPY python/requirements.txt /tmp/requirements.txt
 
 RUN python -m venv "$VIRTUAL_ENV" \
     && python -m pip install --upgrade pip \
     && python -m pip install --no-cache-dir -r /tmp/requirements.txt \
     && rm /tmp/requirements.txt
 
-CMD ["python", "preflight.py", "--device", "cpu", "--model-name", "Helsinki-NLP/opus-mt-en-fr"]
+CMD ["/bin/bash"]

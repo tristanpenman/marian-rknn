@@ -8,7 +8,7 @@ from pathlib import Path
 import numpy as np
 import sentencepiece as spm
 
-from rknn_infer import build_attention_mask, load_config, prepare_encoder_inputs
+from .rknn_infer import build_attention_mask, load_config, prepare_encoder_inputs
 
 DEFAULT_SEQ_LEN = 32
 

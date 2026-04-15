@@ -40,3 +40,5 @@ RUN yes | sdkmanager --licenses && \
 ENV PATH=${PATH}:${ANDROID_HOME}/cmake/${CMAKE_VERSION}/bin
 
 WORKDIR /workspace
+
+CMD ["/bin/bash"]

@@ -6,8 +6,8 @@ import time
 import sacrebleu
 import sentencepiece as spm
 
-from counters import Counters
-from rknn_infer import (
+from .counters import Counters
+from .rknn_infer import (
     DEFAULT_DEC_LEN,
     DEFAULT_ENC_LEN,
     load_config,

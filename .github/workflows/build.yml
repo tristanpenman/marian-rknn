@@ -7,14 +7,14 @@ on:
       - cpp/**
       - thirdparty/**
       - Dockerfile.android
-      - Dockerfile.build
+      - ../../Dockerfile.native
       - .github/workflows/build.yml
   pull_request:
     paths:
       - cpp/**
       - thirdparty/**
       - Dockerfile.android
-      - Dockerfile.build
+      - ../../Dockerfile.native
       - .github/workflows/build.yml
 
 jobs:
