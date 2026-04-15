@@ -102,7 +102,7 @@ docker compose run --build --rm python <cmd> <args...>
 
 > ![NOTE]
 > All the commands listed below can be run within this shell.
-> 
+>
 > The remainder of this guide assumes that you are running commands from inside the Docker container.
 
 ### Preflight
@@ -147,22 +147,22 @@ The output will look something like this:
 This is the local path to the model.
 
 > [!WARNING]
-> 
+>
 
 ### Export to ONNX
 
-The [Marian-ONNX-Converter](./Marian-ONNX-Converter) submodule contains an ONNX implementation of Marian. This includes a script for converting pretrained models from Hugging Face to ONNX format.
+The [Marian-ONNX-Converter](thirdparty/Marian-ONNX-Converter) submodule contains an ONNX implementation of Marian. This includes a script for converting pretrained models from Hugging Face to ONNX format.
 
-If you haven't already, fetch the submodule:
+If you haven't already, fetch the submodules for your local checkout:
 
 ```bash
-git submodule update --init Marian-ONNX-Converter
+git submodule update --init --recursive
 ```
 
 You should be able to run the `convert.py` script without installing any additional dependencies:
 
 ```bash
-python Marian-ONNX-Converter/convert.py
+python thirdparty/Marian-ONNX-Converter/convert.py
 ```
 
 This will prompt you to provide an input file, and optionally a path for an output:
@@ -175,7 +175,7 @@ convert.py: error: the following arguments are required: input
 Use the model path we found earlier:
 
 ```bash
-python Marian-ONNX-Converter/convert.py \
+python thirdparty/Marian-ONNX-Converter/convert.py \
   /workspace/.cache/huggingface/hub/models--Helsinki-NLP--opus-mt-en-fr/snapshots/dd7f6540a7a48a7f4db59e5c0b9c42c8eea67f18 \
   --no-quantize
 ```
@@ -217,7 +217,7 @@ We will later convert `decoder.onnx`, `encoder.onnx`, `lm_bias.bin` and `lm_weig
 Before proceeding any further, we should verify that the ONNX models work correctly, using the `test.py` script:
 
 ```bash
-python Marian-ONNX-Converter/test.py \
+python thirdparty/Marian-ONNX-Converter/test.py \
   outs/dd7f6540a7a48a7f4db59e5c0b9c42c8eea67f18
 ```
 
