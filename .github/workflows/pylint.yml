@@ -4,13 +4,13 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - python/marian_rknn/**
+      - python/**/*.py
       - python/requirements.txt
       - .github/workflows/pylint.yml
       - .pylintrc
   pull_request:
     paths:
-      - python/marian_rknn/**
+      - python/**/*.py
       - python/requirements.txt
       - .github/workflows/pylint.yml
       - .pylintrc
@@ -34,4 +34,4 @@ jobs:
         pip install pylint
     - name: Analysing the code with pylint
       run: |
-        pylint $(git ls-files 'python/marian_rknn/**/*.py')
+        pylint $(git ls-files 'python/**/*.py')
