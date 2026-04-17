@@ -2,9 +2,9 @@
 
 Goal is to extend `marian-rknn` and `Marian-ONNX-Converter` to support Sockeye models.
 
-The [Marian-ONNX-Converter](../Marian-ONNX-Converter) submodule currently converts Hugging Face Marian models into split ONNX graphs (`encoder.onnx` + `decoder.onnx`) and runs greedy decoding in Python.
+The [Marian-ONNX-Converter](../thirdparty/Marian-ONNX-Converter) submodule currently converts Hugging Face Marian models into split ONNX graphs (`encoder.onnx` + `decoder.onnx`) and runs greedy decoding in Python.
 
-To support Sockeye models two adaptations are required:
+To support Sockeye models, two adaptations are required:
 
 1. `Sockeye -> ONNX` export (Marian-ONNX-Converter)
 2. `ONNX -> RKNN` compilation (marian-rknn)
@@ -23,7 +23,7 @@ In addition to the conversion process, Marian-ONNX-Converter also provides an in
 
 ## Marian RKNN
 
-Introduce a new script alongside [convert.py](../scripts/convert.py) (e.g. `convert_sockeye_to_rknn.py`) that consumes exported ONNX files.
+Introduce a new script alongside [rknn_convert.py](../python/marian_rknn/rknn_convert.py) (e.g. `convert_sockeye_to_rknn.py`) that consumes exported ONNX files.
 
 High-level skeleton:
 
