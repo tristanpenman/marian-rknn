@@ -22,16 +22,26 @@
 #include <sentencepiece_processor.h>
 
 #include "rknn_utils.h"
+#include "rknn_matmul_api.h"
+#include "type_half.h"
 
 struct rknn_marian_lm_head_t
 {
     int D;
     int V;
 
-    float* Wt; // DxV row-major
+    float* Wt; // raw VxD row-major LM head weights
     float* b;  // V
 
+    bool use_npu = false;
+    rknn_matmul_ctx matmul_ctx = 0;
+    rknn_tensor_mem* matmul_A = nullptr;
+    rknn_tensor_mem* matmul_B = nullptr;
+    rknn_tensor_mem* matmul_C = nullptr;
+    rknn_matmul_io_attr* matmul_io_attr = nullptr;
+
     void operator()(const float* hidden, float* logits) const;
+    int apply(const half* hidden, float* logits) const;
 };
 
 struct rknn_marian_rknn_context_t

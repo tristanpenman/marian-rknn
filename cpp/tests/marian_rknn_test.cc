@@ -77,4 +77,23 @@ TEST(MarianRknnTest, AttentionMaskDropsAfterFirstEos)
     EXPECT_EQ(mask, (std::vector<int32_t>{1, 0, 0}));
 }
 
+TEST(MarianRknnTest, LmHeadApplyFallsBackToEigen)
+{
+    const float weights[] = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+    const float bias[] = {0.5f, -1.0f, 2.0f};
+    const half hidden[] = {float_to_half(2.0f), float_to_half(3.0f)};
+    float logits[] = {0.0f, 0.0f, 0.0f};
+
+    rknn_marian_lm_head_t lm_head;
+    lm_head.D = 2;
+    lm_head.V = 3;
+    lm_head.Wt = const_cast<float*>(weights);
+    lm_head.b = const_cast<float*>(bias);
+
+    EXPECT_EQ(lm_head.apply(hidden, logits), 0);
+    EXPECT_FLOAT_EQ(logits[0], 8.5f);
+    EXPECT_FLOAT_EQ(logits[1], 17.0f);
+    EXPECT_FLOAT_EQ(logits[2], 30.0f);
+}
+
 }  // namespace

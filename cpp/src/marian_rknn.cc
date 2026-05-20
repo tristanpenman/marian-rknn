@@ -15,6 +15,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstring>
 #include <fstream>
 #include <sstream>
 #include <vector>
@@ -26,6 +27,7 @@
 
 // third-party
 #include "rknn_api.h"
+#include "rknn_matmul_api.h"
 
 // internal
 #include "easy_timer.h"
@@ -84,6 +86,118 @@ void rknn_marian_lm_head_t::operator()(const float* hidden, float* out_logits) c
     y += bias;
 }
 
+int rknn_marian_lm_head_t::apply(const half* hidden, float* out_logits) const
+{
+    if (use_npu) {
+        memcpy(matmul_A->virt_addr, hidden, sizeof(half) * D);
+        rknn_mem_sync(matmul_ctx, matmul_A, RKNN_MEMORY_SYNC_TO_DEVICE);
+
+        const int ret = rknn_matmul_run(matmul_ctx);
+        if (ret < 0) {
+            LOG(ERROR) << "rknn_matmul_run failed. ret=" << ret;
+            return -1;
+        }
+
+        rknn_mem_sync(matmul_ctx, matmul_C, RKNN_MEMORY_SYNC_FROM_DEVICE);
+        memcpy(out_logits, matmul_C->virt_addr, sizeof(float) * V);
+        for (int i = 0; i < V; ++i) {
+            out_logits[i] += b[i];
+        }
+        return 0;
+    }
+
+    std::vector<float> hidden_floats(D, 0.0f);
+    half_to_float_array(hidden, hidden_floats.data(), D);
+    (*this)(hidden_floats.data(), out_logits);
+    return 0;
+}
+
+
+int init_lm_head_matmul(rknn_marian_lm_head_t* lm_head)
+{
+    rknn_matmul_info info{};
+    info.M = 1;
+    info.K = lm_head->D;
+    info.N = lm_head->V;
+    info.type = RKNN_FLOAT16_MM_FLOAT16_TO_FLOAT32;
+    info.B_layout = RKNN_MM_LAYOUT_NORM;
+    info.AC_layout = RKNN_MM_LAYOUT_NORM;
+
+    lm_head->matmul_io_attr = new rknn_matmul_io_attr{};
+    int ret = rknn_matmul_create(&lm_head->matmul_ctx, &info, lm_head->matmul_io_attr);
+    if (ret < 0) {
+        LOG(WARNING) << "rknn_matmul_create failed for LM head. Falling back to Eigen. ret=" << ret;
+        delete lm_head->matmul_io_attr;
+        lm_head->matmul_io_attr = nullptr;
+        return -1;
+    }
+
+    lm_head->matmul_A = rknn_create_mem(lm_head->matmul_ctx, lm_head->matmul_io_attr->A.size);
+    lm_head->matmul_B = rknn_create_mem(lm_head->matmul_ctx, lm_head->matmul_io_attr->B.size);
+    lm_head->matmul_C = rknn_create_mem(lm_head->matmul_ctx, lm_head->matmul_io_attr->C.size);
+    if (!lm_head->matmul_A || !lm_head->matmul_B || !lm_head->matmul_C) {
+        LOG(WARNING) << "Failed to allocate RKNN matmul memory for LM head. Falling back to Eigen.";
+        return -1;
+    }
+
+    std::vector<half> Wt_fp16(static_cast<size_t>(lm_head->D) * lm_head->V);
+    for (int d = 0; d < lm_head->D; ++d) {
+        for (int v = 0; v < lm_head->V; ++v) {
+            Wt_fp16[static_cast<size_t>(d) * lm_head->V + v] =
+                float_to_half(lm_head->Wt[static_cast<size_t>(v) * lm_head->D + d]);
+        }
+    }
+    memset(lm_head->matmul_B->virt_addr, 0, lm_head->matmul_io_attr->B.size);
+    memcpy(
+        lm_head->matmul_B->virt_addr,
+        Wt_fp16.data(),
+        std::min<size_t>(lm_head->matmul_io_attr->B.size, Wt_fp16.size() * sizeof(half)));
+    rknn_mem_sync(lm_head->matmul_ctx, lm_head->matmul_B, RKNN_MEMORY_SYNC_TO_DEVICE);
+
+    ret = rknn_matmul_set_io_mem(lm_head->matmul_ctx, lm_head->matmul_A, &lm_head->matmul_io_attr->A);
+    if (ret < 0) {
+        LOG(WARNING) << "rknn_matmul_set_io_mem(A) failed for LM head. Falling back to Eigen. ret=" << ret;
+        return -1;
+    }
+    ret = rknn_matmul_set_io_mem(lm_head->matmul_ctx, lm_head->matmul_B, &lm_head->matmul_io_attr->B);
+    if (ret < 0) {
+        LOG(WARNING) << "rknn_matmul_set_io_mem(B) failed for LM head. Falling back to Eigen. ret=" << ret;
+        return -1;
+    }
+    ret = rknn_matmul_set_io_mem(lm_head->matmul_ctx, lm_head->matmul_C, &lm_head->matmul_io_attr->C);
+    if (ret < 0) {
+        LOG(WARNING) << "rknn_matmul_set_io_mem(C) failed for LM head. Falling back to Eigen. ret=" << ret;
+        return -1;
+    }
+
+    lm_head->use_npu = true;
+    LOG(INFO) << "Using RKNN native matmul for LM head";
+    return 0;
+}
+
+void release_lm_head_matmul(rknn_marian_lm_head_t* lm_head)
+{
+    if (lm_head->matmul_ctx) {
+        if (lm_head->matmul_A) {
+            rknn_destroy_mem(lm_head->matmul_ctx, lm_head->matmul_A);
+            lm_head->matmul_A = nullptr;
+        }
+        if (lm_head->matmul_B) {
+            rknn_destroy_mem(lm_head->matmul_ctx, lm_head->matmul_B);
+            lm_head->matmul_B = nullptr;
+        }
+        if (lm_head->matmul_C) {
+            rknn_destroy_mem(lm_head->matmul_ctx, lm_head->matmul_C);
+            lm_head->matmul_C = nullptr;
+        }
+        rknn_matmul_destroy(lm_head->matmul_ctx);
+        lm_head->matmul_ctx = 0;
+    }
+    delete lm_head->matmul_io_attr;
+    lm_head->matmul_io_attr = nullptr;
+    lm_head->use_npu = false;
+}
+
 int greedy_decode(
     rknn_marian_rknn_context_t* app_ctx,
     int32_t* output_token,
@@ -123,26 +237,17 @@ int greedy_decode(
             stats->decoder_ms += elapsed_ms(run_start, run_end);
         }
 
-        LOG(VERBOSE) << "Convert fp16 to fp32";
         auto ptr = static_cast<half *>(app_ctx->dec.output_mem[to_index(DecoderOutput::DecoderOutput)]->virt_addr);
-        std::vector<float> output_floats(app_ctx->lm_head.D, 0);
         const half* iter_ptr = ptr + app_ctx->lm_head.D * num_iter;
-        std::transform(
-            iter_ptr,
-            iter_ptr + app_ctx->lm_head.D,
-            output_floats.begin(),
-            half_to_float
-        );
 
         LOG(VERBOSE) << "Apply LM head";
         auto lm_start = std::chrono::steady_clock::now();
-        std::vector<float> logits;
-        logits.resize(app_ctx->lm_head.V);
-        app_ctx->lm_head(
-            output_floats.data(),
-            logits.data()
-        );
+        std::vector<float> logits(app_ctx->lm_head.V);
+        ret = app_ctx->lm_head.apply(iter_ptr, logits.data());
         auto lm_end = std::chrono::steady_clock::now();
+        if (ret < 0) {
+            return -1;
+        }
         if (stats) {
             stats->lm_head_ms += elapsed_ms(lm_start, lm_end);
         }
@@ -555,6 +660,10 @@ int init_marian_rknn_model(const std::string &model_dir, rknn_marian_rknn_contex
     app_ctx->lm_head.b = static_cast<float *>(malloc(sizeof(float) * V));
     read_fp32_from_file(lm_bias_path.c_str(), V, app_ctx->lm_head.b);
 
+    if (init_lm_head_matmul(&app_ctx->lm_head) != 0) {
+        release_lm_head_matmul(&app_ctx->lm_head);
+    }
+
     LOG(INFO) << "Load vocab";
     read_map_from_file(vocab_path, app_ctx->vocab);
 
@@ -576,6 +685,7 @@ int release_marian_rknn_model(rknn_marian_rknn_context_t* app_ctx)
 {
     rknn_utils_release(&app_ctx->enc);
     rknn_utils_release(&app_ctx->dec);
+    release_lm_head_matmul(&app_ctx->lm_head);
 
     free(app_ctx->lm_head.Wt);
     free(app_ctx->lm_head.b);
