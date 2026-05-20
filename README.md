@@ -534,6 +534,12 @@ cmake ..
 make
 ```
 
+An alternative is to use the native build helper script:
+
+```bash
+./scripts/build-native.sh
+```
+
 The `marian-rknn` executable can then be copied over to the target device, using `scp` or another file transfer utility. For example:
 
 ```bash
@@ -585,13 +591,13 @@ docker compose run --build android
 This includes the Android NDK and CMake. From inside the container you can build the project using a CMake wrapper script:
 
 ```bash
-./scripts/android-build.sh Release
+./scripts/build-android.sh Release
 ```
 
 Or for a debug build:
 
 ```bash
-./scripts/android-build.sh Debug
+./scripts/build-android.sh Debug
 ```
 
 This build script configures CMake with:

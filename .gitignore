@@ -4,7 +4,8 @@
 .python-version
 __pycache__
 build
-build-*
+build-android
+build-native
 cache
 calibration
 cmake-build-*
