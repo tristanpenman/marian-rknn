@@ -16,6 +16,7 @@
 #pragma once
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -118,7 +119,8 @@ struct rknn_marian_inference_stats_t
 int init_marian_rknn_model(
     const std::string &model_dir,
     rknn_marian_rknn_context_t *app_ctx,
-    bool eigen = false);
+    bool eigen = false,
+    std::optional<int> num_cores = std::nullopt);
 
 int release_marian_rknn_model(
     rknn_marian_rknn_context_t* app_ctx);

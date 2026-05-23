@@ -529,7 +529,7 @@ int validate_sequence_lengths(const rknn_marian_rknn_context_t* app_ctx)
     return 0;
 }
 
-int init_marian_rknn_model(const std::string &model_dir, rknn_marian_rknn_context_t *app_ctx, bool eigen)
+int init_marian_rknn_model(const std::string &model_dir, rknn_marian_rknn_context_t *app_ctx, bool eigen, std::optional<int> num_cores)
 {
     int ret = 0;
 
@@ -578,7 +578,7 @@ int init_marian_rknn_model(const std::string &model_dir, rknn_marian_rknn_contex
 
     LOG(INFO) << "Init RKNN encoder " << encoder_path;
     app_ctx->enc.m_path = encoder_path;
-    ret = rknn_utils_init(&app_ctx->enc);
+    ret = rknn_utils_init(&app_ctx->enc, num_cores);
     if (ret != 0) {
         LOG(ERROR) << "rknn_utils_init failed. ret=" << ret;
         return -1;

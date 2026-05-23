@@ -15,6 +15,7 @@
 
 #pragma once
 
+#include <optional>
 #include <string>
 
 #include <rknn_api.h>
@@ -88,7 +89,7 @@ struct MODEL_INFO
 
 int rknn_utils_get_type_size(rknn_tensor_type type);
 
-int rknn_utils_init(MODEL_INFO* model_info);
+int rknn_utils_init(MODEL_INFO* model_info, std::optional<int> num_cores = std::nullopt);
 int rknn_utils_query_model_info(MODEL_INFO* model_info);
 
 int rknn_utils_init_input_buffer(const MODEL_INFO* model_info, int node_index, API_TYPE api_type, uint8_t pass_through, rknn_tensor_type dtype, rknn_tensor_format layout_fmt);

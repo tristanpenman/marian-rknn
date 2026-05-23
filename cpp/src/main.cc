@@ -14,6 +14,8 @@
 // limitations under the License.
 
 #include <iostream>
+#include <optional>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -36,12 +38,31 @@ int read_user_input(std::string &line)
 
 int main(const int argc, char **argv)
 {
+
+    bool eigen = false;
     bool verbose = false;
+    std::optional<int> num_cores;
     std::vector<const char*> positional_args;
     positional_args.reserve(static_cast<size_t>(argc - 1));
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "-v") == 0 || strcmp(argv[i], "--verbose") == 0) {
             verbose = true;
+            continue;
+        }
+        if (strcmp(argv[i], "--eigen") == 0) {
+            eigen = true;
+            continue;
+        }
+        if (strcmp(argv[i], "--cores") == 0) {
+            if (i + 1 >= argc) {
+                LOG(WARNING) << "--cores option requires an argument specifying the number of cores to use";
+                return -1;
+            }
+            num_cores = std::atoi(argv[++i]);
+            if (num_cores <= 0 || num_cores > 3) {
+                LOG(WARNING) << "Invalid number of cores specified: " << argv[i];
+                return -1;
+            }
             continue;
         }
         positional_args.push_back(argv[i]);
@@ -51,20 +72,12 @@ int main(const int argc, char **argv)
     LOG(INFO) << "Marian RKNN Translator Demo";
 
     if (positional_args.empty()) {
-        LOG(ERROR) << "Usage: " << argv[0] << " [-v|--verbose] [--eigen] <model_dir> <sentence ...>";
+        LOG(ERROR) << "Usage: " << argv[0] << " [-v|--verbose] [--eigen] [--cores <num_cores>] <model_dir> <sentence ...>";
         return -1;
     }
 
     EasyTimer timer;
     bool is_receipt = false;
-
-    bool eigen = false;
-    for (const auto& arg : positional_args) {
-        if (strcmp(arg, "--eigen") == 0) {
-            eigen = true;
-            break;
-        }
-    }
     const char *model_dir = positional_args[0];
 
     rknn_marian_rknn_context_t rknn_app_ctx;
@@ -72,7 +85,7 @@ int main(const int argc, char **argv)
     std::string input_text;
     std::string output_text;
 
-    int ret = init_marian_rknn_model(model_dir, &rknn_app_ctx, eigen);
+    int ret = init_marian_rknn_model(model_dir, &rknn_app_ctx, eigen, num_cores);
     if (ret != 0) {
         LOG(ERROR) << "init_marian_rknn_model failed";
         return 1;

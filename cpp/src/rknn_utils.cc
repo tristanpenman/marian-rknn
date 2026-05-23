@@ -46,7 +46,7 @@ void dump_tensor_attr(const rknn_tensor_attr *attr)
 
 } // namespace
 
-int rknn_utils_init(MODEL_INFO* model_info)
+int rknn_utils_init(MODEL_INFO* model_info, std::optional<int> num_cores)
 {
     if (model_info->m_path.empty()) {
         LOG(ERROR) << "Model path is null";
@@ -71,7 +71,28 @@ int rknn_utils_init(MODEL_INFO* model_info)
                  << version.drv_version << " (api version: " << version.api_version << ")";
 
     ret = rknn_utils_query_model_info(model_info);
-    return ret;
+    if (ret != 0) {
+        LOG(ERROR) << "rknn_utils_query_model_info failed. ret=" << ret;
+        return -1;
+    }
+
+    if (num_cores.has_value()) {
+        int core_num = num_cores.value();
+        if (core_num == 2) {
+            ret = rknn_set_core_mask(model_info->ctx, RKNN_NPU_CORE_0_1);
+        } else if (core_num == 3) {
+            ret = rknn_set_core_mask(model_info->ctx, RKNN_NPU_CORE_0_1_2);
+        } else {
+            ret = rknn_set_core_mask(model_info->ctx, RKNN_NPU_CORE_AUTO);
+        }
+    }
+
+    if (ret != 0) {
+        LOG(ERROR) << "Failed to set RKNN core mask, error=" << ret;
+        return -1;
+    }
+
+    return 0;
 }
 
 int rknn_utils_query_model_info(MODEL_INFO* model_info)
