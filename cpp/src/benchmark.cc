@@ -35,12 +35,17 @@ void log_metric(const std::string& label, double value_ms)
 
 int main(const int argc, char **argv)
 {
+    bool eigen = false;
     bool verbose = false;
     std::vector<const char*> positional_args;
     positional_args.reserve(static_cast<size_t>(argc - 1));
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "-v") == 0 || strcmp(argv[i], "--verbose") == 0) {
             verbose = true;
+            continue;
+        }
+        if (strcmp(argv[i], "--eigen") == 0) {
+            eigen = true;
             continue;
         }
         positional_args.push_back(argv[i]);
@@ -50,7 +55,7 @@ int main(const int argc, char **argv)
     LOG(INFO) << "Marian RKNN Benchmark";
 
     if (positional_args.size() != 3) {
-        LOG(ERROR) << "Usage: " << argv[0] << " [-v|--verbose] <model_dir> <input_file> <max_seconds>";
+        LOG(ERROR) << "Usage: " << argv[0] << " [-v|--verbose] [--eigen] <model_dir> <input_file> <max_seconds>";
         return -1;
     }
 
@@ -92,7 +97,7 @@ int main(const int argc, char **argv)
     }
 
     rknn_marian_rknn_context_t rknn_app_ctx;
-    int ret = init_marian_rknn_model(model_dir, &rknn_app_ctx);
+    int ret = init_marian_rknn_model(model_dir, &rknn_app_ctx, eigen);
     if (ret != 0) {
         LOG(ERROR) << "init_marian_rknn_model failed";
         return 1;

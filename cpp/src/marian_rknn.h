@@ -18,12 +18,25 @@
 #include <cstdint>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 #include <sentencepiece_processor.h>
 
 #include "rknn_utils.h"
 #include "rknn_matmul_api.h"
 #include "type_half.h"
+
+struct rknn_marian_lm_head_matmul_chunk_t
+{
+    int vocab_offset = 0;
+    int vocab_size = 0;
+    int padded_vocab_size = 0;
+    rknn_matmul_ctx ctx = 0;
+    rknn_tensor_mem* A = nullptr;
+    rknn_tensor_mem* B = nullptr;
+    rknn_tensor_mem* C = nullptr;
+    rknn_matmul_io_attr io_attr{};
+};
 
 struct rknn_marian_lm_head_t
 {
@@ -34,11 +47,7 @@ struct rknn_marian_lm_head_t
     float* b;  // V
 
     bool use_npu = false;
-    rknn_matmul_ctx matmul_ctx = 0;
-    rknn_tensor_mem* matmul_A = nullptr;
-    rknn_tensor_mem* matmul_B = nullptr;
-    rknn_tensor_mem* matmul_C = nullptr;
-    rknn_matmul_io_attr* matmul_io_attr = nullptr;
+    std::vector<rknn_marian_lm_head_matmul_chunk_t> matmul_chunks;
 
     void operator()(const float* hidden, float* logits) const;
     int apply(const half* hidden, float* logits) const;
@@ -108,7 +117,8 @@ struct rknn_marian_inference_stats_t
 
 int init_marian_rknn_model(
     const std::string &model_dir,
-    rknn_marian_rknn_context_t *app_ctx);
+    rknn_marian_rknn_context_t *app_ctx,
+    bool eigen = false);
 
 int release_marian_rknn_model(
     rknn_marian_rknn_context_t* app_ctx);

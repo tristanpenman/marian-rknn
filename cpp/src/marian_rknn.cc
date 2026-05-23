@@ -42,6 +42,10 @@ using json = nlohmann::json;
 
 namespace {
 
+constexpr int kRk3588Fp16MatmulKAlignment = 32;
+constexpr int kRk3588Fp16MatmulNAlignment = 32;
+constexpr int kRk3588Fp16MatmulMaxN = 4096;
+
 enum class EncoderInput : int
 {
     InputIds = 0,
@@ -71,6 +75,11 @@ constexpr int to_index(const EnumType input)
     return static_cast<int>(input);
 }
 
+int align_up(const int value, const int alignment)
+{
+    return ((value + alignment - 1) / alignment) * alignment;
+}
+
 }  // namespace
 
 void rknn_marian_lm_head_t::operator()(const float* hidden, float* out_logits) const
@@ -89,17 +98,28 @@ void rknn_marian_lm_head_t::operator()(const float* hidden, float* out_logits) c
 int rknn_marian_lm_head_t::apply(const half* hidden, float* out_logits) const
 {
     if (use_npu) {
-        memcpy(matmul_A->virt_addr, hidden, sizeof(half) * D);
-        rknn_mem_sync(matmul_ctx, matmul_A, RKNN_MEMORY_SYNC_TO_DEVICE);
+        for (const auto& chunk : matmul_chunks) {
+            memcpy(chunk.A->virt_addr, hidden, sizeof(half) * D);
+            rknn_mem_sync(chunk.ctx, chunk.A, RKNN_MEMORY_SYNC_TO_DEVICE);
 
-        const int ret = rknn_matmul_run(matmul_ctx);
-        if (ret < 0) {
-            LOG(ERROR) << "rknn_matmul_run failed. ret=" << ret;
-            return -1;
+            int ret = rknn_matmul_set_io_mem(chunk.ctx, chunk.A, const_cast<rknn_matmul_tensor_attr*>(&chunk.io_attr.A));
+            if (ret < 0) {
+                LOG(ERROR) << "rknn_matmul_set_io_mem(A) failed. ret=" << ret;
+                return -1;
+            }
+
+            ret = rknn_matmul_run(chunk.ctx);
+            if (ret < 0) {
+                LOG(ERROR) << "rknn_matmul_run failed. ret=" << ret;
+                return -1;
+            }
+
+            rknn_mem_sync(chunk.ctx, chunk.C, RKNN_MEMORY_SYNC_FROM_DEVICE);
+            memcpy(
+                out_logits + chunk.vocab_offset,
+                chunk.C->virt_addr,
+                sizeof(float) * chunk.vocab_size);
         }
-
-        rknn_mem_sync(matmul_ctx, matmul_C, RKNN_MEMORY_SYNC_FROM_DEVICE);
-        memcpy(out_logits, matmul_C->virt_addr, sizeof(float) * V);
         for (int i = 0; i < V; ++i) {
             out_logits[i] += b[i];
         }
@@ -112,89 +132,112 @@ int rknn_marian_lm_head_t::apply(const half* hidden, float* out_logits) const
     return 0;
 }
 
+void release_lm_head_matmul(rknn_marian_lm_head_t* lm_head);
 
 int init_lm_head_matmul(rknn_marian_lm_head_t* lm_head)
 {
-    rknn_matmul_info info{};
-    info.M = 1;
-    info.K = lm_head->D;
-    info.N = lm_head->V;
-    info.type = RKNN_FLOAT16_MM_FLOAT16_TO_FLOAT32;
-    info.B_layout = RKNN_MM_LAYOUT_NORM;
-    info.AC_layout = RKNN_MM_LAYOUT_NORM;
-
-    lm_head->matmul_io_attr = new rknn_matmul_io_attr{};
-    int ret = rknn_matmul_create(&lm_head->matmul_ctx, &info, lm_head->matmul_io_attr);
-    if (ret < 0) {
-        LOG(WARNING) << "rknn_matmul_create failed for LM head. Falling back to Eigen. ret=" << ret;
-        delete lm_head->matmul_io_attr;
-        lm_head->matmul_io_attr = nullptr;
+    if (lm_head->D % kRk3588Fp16MatmulKAlignment != 0) {
+        LOG(WARNING) << "LM head hidden size " << lm_head->D
+                     << " is not " << kRk3588Fp16MatmulKAlignment
+                     << "-aligned for RK3588 FP16 matmul. Falling back to Eigen.";
         return -1;
     }
 
-    lm_head->matmul_A = rknn_create_mem(lm_head->matmul_ctx, lm_head->matmul_io_attr->A.size);
-    lm_head->matmul_B = rknn_create_mem(lm_head->matmul_ctx, lm_head->matmul_io_attr->B.size);
-    lm_head->matmul_C = rknn_create_mem(lm_head->matmul_ctx, lm_head->matmul_io_attr->C.size);
-    if (!lm_head->matmul_A || !lm_head->matmul_B || !lm_head->matmul_C) {
-        LOG(WARNING) << "Failed to allocate RKNN matmul memory for LM head. Falling back to Eigen.";
-        return -1;
-    }
+    release_lm_head_matmul(lm_head);
 
-    std::vector<half> Wt_fp16(static_cast<size_t>(lm_head->D) * lm_head->V);
-    for (int d = 0; d < lm_head->D; ++d) {
-        for (int v = 0; v < lm_head->V; ++v) {
-            Wt_fp16[static_cast<size_t>(d) * lm_head->V + v] =
-                float_to_half(lm_head->Wt[static_cast<size_t>(v) * lm_head->D + d]);
+    for (int offset = 0; offset < lm_head->V; offset += kRk3588Fp16MatmulMaxN) {
+        rknn_marian_lm_head_matmul_chunk_t chunk;
+        chunk.vocab_offset = offset;
+        chunk.vocab_size = std::min(kRk3588Fp16MatmulMaxN, lm_head->V - offset);
+        chunk.padded_vocab_size = align_up(chunk.vocab_size, kRk3588Fp16MatmulNAlignment);
+
+        rknn_matmul_info info{};
+        info.M = 1;
+        info.K = lm_head->D;
+        info.N = chunk.padded_vocab_size;
+        info.type = RKNN_FLOAT16_MM_FLOAT16_TO_FLOAT32;
+        info.B_layout = RKNN_MM_LAYOUT_NORM;
+        info.AC_layout = RKNN_MM_LAYOUT_NORM;
+
+        int ret = rknn_matmul_create(&chunk.ctx, &info, &chunk.io_attr);
+        if (ret < 0) {
+            LOG(WARNING) << "rknn_matmul_create failed for LM head chunk offset=" << offset
+                         << " size=" << chunk.vocab_size << " padded_size=" << chunk.padded_vocab_size
+                         << ". Falling back to Eigen. ret=" << ret;
+            release_lm_head_matmul(lm_head);
+            return -1;
         }
-    }
-    memset(lm_head->matmul_B->virt_addr, 0, lm_head->matmul_io_attr->B.size);
-    memcpy(
-        lm_head->matmul_B->virt_addr,
-        Wt_fp16.data(),
-        std::min<size_t>(lm_head->matmul_io_attr->B.size, Wt_fp16.size() * sizeof(half)));
-    rknn_mem_sync(lm_head->matmul_ctx, lm_head->matmul_B, RKNN_MEMORY_SYNC_TO_DEVICE);
 
-    ret = rknn_matmul_set_io_mem(lm_head->matmul_ctx, lm_head->matmul_A, &lm_head->matmul_io_attr->A);
-    if (ret < 0) {
-        LOG(WARNING) << "rknn_matmul_set_io_mem(A) failed for LM head. Falling back to Eigen. ret=" << ret;
-        return -1;
-    }
-    ret = rknn_matmul_set_io_mem(lm_head->matmul_ctx, lm_head->matmul_B, &lm_head->matmul_io_attr->B);
-    if (ret < 0) {
-        LOG(WARNING) << "rknn_matmul_set_io_mem(B) failed for LM head. Falling back to Eigen. ret=" << ret;
-        return -1;
-    }
-    ret = rknn_matmul_set_io_mem(lm_head->matmul_ctx, lm_head->matmul_C, &lm_head->matmul_io_attr->C);
-    if (ret < 0) {
-        LOG(WARNING) << "rknn_matmul_set_io_mem(C) failed for LM head. Falling back to Eigen. ret=" << ret;
-        return -1;
+        chunk.A = rknn_create_mem(chunk.ctx, chunk.io_attr.A.size);
+        chunk.B = rknn_create_mem(chunk.ctx, chunk.io_attr.B.size);
+        chunk.C = rknn_create_mem(chunk.ctx, chunk.io_attr.C.size);
+        if (!chunk.A || !chunk.B || !chunk.C) {
+            LOG(WARNING) << "Failed to allocate RKNN matmul memory for LM head. Falling back to Eigen.";
+            lm_head->matmul_chunks.push_back(chunk);
+            release_lm_head_matmul(lm_head);
+            return -1;
+        }
+
+        std::vector<half> Wt_fp16(static_cast<size_t>(lm_head->D) * chunk.padded_vocab_size, float_to_half(0.0f));
+        for (int d = 0; d < lm_head->D; ++d) {
+            for (int local_v = 0; local_v < chunk.vocab_size; ++local_v) {
+                const int global_v = offset + local_v;
+                Wt_fp16[static_cast<size_t>(d) * chunk.padded_vocab_size + local_v] =
+                    float_to_half(lm_head->Wt[static_cast<size_t>(global_v) * lm_head->D + d]);
+            }
+        }
+        memset(chunk.B->virt_addr, 0, chunk.io_attr.B.size);
+        memcpy(
+            chunk.B->virt_addr,
+            Wt_fp16.data(),
+            std::min<size_t>(chunk.io_attr.B.size, Wt_fp16.size() * sizeof(half)));
+        rknn_mem_sync(chunk.ctx, chunk.B, RKNN_MEMORY_SYNC_TO_DEVICE);
+
+        ret = rknn_matmul_set_io_mem(chunk.ctx, chunk.B, &chunk.io_attr.B);
+        if (ret < 0) {
+            LOG(WARNING) << "rknn_matmul_set_io_mem(B) failed for LM head. Falling back to Eigen. ret=" << ret;
+            lm_head->matmul_chunks.push_back(chunk);
+            release_lm_head_matmul(lm_head);
+            return -1;
+        }
+        ret = rknn_matmul_set_io_mem(chunk.ctx, chunk.C, &chunk.io_attr.C);
+        if (ret < 0) {
+            LOG(WARNING) << "rknn_matmul_set_io_mem(C) failed for LM head. Falling back to Eigen. ret=" << ret;
+            lm_head->matmul_chunks.push_back(chunk);
+            release_lm_head_matmul(lm_head);
+            return -1;
+        }
+
+        lm_head->matmul_chunks.push_back(chunk);
     }
 
     lm_head->use_npu = true;
-    LOG(INFO) << "Using RKNN native matmul for LM head";
+    LOG(INFO) << "Using RKNN native matmul for LM head with " << lm_head->matmul_chunks.size()
+              << " RK3588-compatible vocab chunks";
     return 0;
 }
 
 void release_lm_head_matmul(rknn_marian_lm_head_t* lm_head)
 {
-    if (lm_head->matmul_ctx) {
-        if (lm_head->matmul_A) {
-            rknn_destroy_mem(lm_head->matmul_ctx, lm_head->matmul_A);
-            lm_head->matmul_A = nullptr;
+    for (auto& chunk : lm_head->matmul_chunks) {
+        if (chunk.ctx) {
+            if (chunk.A) {
+                rknn_destroy_mem(chunk.ctx, chunk.A);
+                chunk.A = nullptr;
+            }
+            if (chunk.B) {
+                rknn_destroy_mem(chunk.ctx, chunk.B);
+                chunk.B = nullptr;
+            }
+            if (chunk.C) {
+                rknn_destroy_mem(chunk.ctx, chunk.C);
+                chunk.C = nullptr;
+            }
+            rknn_matmul_destroy(chunk.ctx);
+            chunk.ctx = 0;
         }
-        if (lm_head->matmul_B) {
-            rknn_destroy_mem(lm_head->matmul_ctx, lm_head->matmul_B);
-            lm_head->matmul_B = nullptr;
-        }
-        if (lm_head->matmul_C) {
-            rknn_destroy_mem(lm_head->matmul_ctx, lm_head->matmul_C);
-            lm_head->matmul_C = nullptr;
-        }
-        rknn_matmul_destroy(lm_head->matmul_ctx);
-        lm_head->matmul_ctx = 0;
     }
-    delete lm_head->matmul_io_attr;
-    lm_head->matmul_io_attr = nullptr;
+    lm_head->matmul_chunks.clear();
     lm_head->use_npu = false;
 }
 
@@ -486,7 +529,7 @@ int validate_sequence_lengths(const rknn_marian_rknn_context_t* app_ctx)
     return 0;
 }
 
-int init_marian_rknn_model(const std::string &model_dir, rknn_marian_rknn_context_t *app_ctx)
+int init_marian_rknn_model(const std::string &model_dir, rknn_marian_rknn_context_t *app_ctx, bool eigen)
 {
     int ret = 0;
 
@@ -660,8 +703,13 @@ int init_marian_rknn_model(const std::string &model_dir, rknn_marian_rknn_contex
     app_ctx->lm_head.b = static_cast<float *>(malloc(sizeof(float) * V));
     read_fp32_from_file(lm_bias_path.c_str(), V, app_ctx->lm_head.b);
 
-    if (init_lm_head_matmul(&app_ctx->lm_head) != 0) {
-        release_lm_head_matmul(&app_ctx->lm_head);
+    if (eigen) {
+        LOG(INFO) << "Using Eigen for LM head";
+    } else {
+        LOG(INFO) << "Initialize LM head matmul";
+        if (init_lm_head_matmul(&app_ctx->lm_head) != 0) {
+            release_lm_head_matmul(&app_ctx->lm_head);
+        }
     }
 
     LOG(INFO) << "Load vocab";

@@ -51,12 +51,20 @@ int main(const int argc, char **argv)
     LOG(INFO) << "Marian RKNN Translator Demo";
 
     if (positional_args.empty()) {
-        LOG(ERROR) << "Usage: " << argv[0] << " [-v|--verbose] <model_dir> <sentence ...>";
+        LOG(ERROR) << "Usage: " << argv[0] << " [-v|--verbose] [--eigen] <model_dir> <sentence ...>";
         return -1;
     }
 
     EasyTimer timer;
     bool is_receipt = false;
+
+    bool eigen = false;
+    for (const auto& arg : positional_args) {
+        if (strcmp(arg, "--eigen") == 0) {
+            eigen = true;
+            break;
+        }
+    }
     const char *model_dir = positional_args[0];
 
     rknn_marian_rknn_context_t rknn_app_ctx;
@@ -64,7 +72,7 @@ int main(const int argc, char **argv)
     std::string input_text;
     std::string output_text;
 
-    int ret = init_marian_rknn_model(model_dir, &rknn_app_ctx);
+    int ret = init_marian_rknn_model(model_dir, &rknn_app_ctx, eigen);
     if (ret != 0) {
         LOG(ERROR) << "init_marian_rknn_model failed";
         return 1;
