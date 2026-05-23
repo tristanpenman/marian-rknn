@@ -34,7 +34,7 @@ jobs:
           docker run --rm \
             -v "$PWD":/workspace \
             marian-rknn-android \
-            bash -c "scripts/android-build.sh"
+            bash -c "scripts/build-android.sh"
 
       - name: Upload Android marian-rknn binary
         uses: actions/upload-artifact@v4
