@@ -3,6 +3,12 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
+if [[ "${1:-}" == "docker" ]]; then
+  shift
+  cd "${ROOT_DIR}"
+  exec docker compose run --rm --remove-orphans --build android ./scripts/build-android.sh "$@"
+fi
+
 NDK_PATH="${ANDROID_NDK_HOME:-}"
 RKNN_RUNTIME_SO="${ROOT_DIR}/thirdparty/rknpu2/lib-android/arm64-v8a/librknnrt.so"
 BUILD_TYPE="Release"
