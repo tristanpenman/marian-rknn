@@ -23,7 +23,16 @@
 #include "logger.h"
 #include "marian_rknn.h"
 
+namespace {
+
 static constexpr size_t kMaxUserInputLen = 1024;
+
+void print_usage(const char* program)
+{
+    LOG(ERROR) << "Usage: " << program
+               << " [-v|--verbose] [--eigen] [--cores <num_cores>] <model_dir>"
+               << " <sentence ...>";
+}
 
 int read_user_input(std::string &line)
 {
@@ -36,9 +45,10 @@ int read_user_input(std::string &line)
     return 0;
 }
 
+}  // namespace
+
 int main(const int argc, char **argv)
 {
-
     bool eigen = false;
     bool verbose = false;
     std::optional<int> num_cores;
@@ -72,7 +82,7 @@ int main(const int argc, char **argv)
     LOG(INFO) << "Marian RKNN Translator Demo";
 
     if (positional_args.empty()) {
-        LOG(ERROR) << "Usage: " << argv[0] << " [-v|--verbose] [--eigen] [--cores <num_cores>] <model_dir> <sentence ...>";
+        print_usage(argv[0]);
         return -1;
     }
 
