@@ -12,6 +12,9 @@ set(CMAKE_DISABLE_IN_SOURCE_BUILD ON)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Avoid language extensions to ensure consistent behavior across compilers
+set(CMAKE_CXX_EXTENSIONS OFF)
+
 # FetchContent: Easier than Git submodules
 include(FetchContent)
 
@@ -29,6 +32,13 @@ IF(CMAKE_COMPILER_IS_GNUCC)
     set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -O0")
     set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -O0")
 ENDIF(CMAKE_COMPILER_IS_GNUCC)
+
+# Avoid building shared libraries
+set(BUILD_SHARED_LIBS OFF)
+
+# -----------------------------------------------------------------------------
+# build config
+# -----------------------------------------------------------------------------
 
 option(MARIAN_RKNN_BUILD_BENCHMARK "Build benchmark executable" ON)
 
@@ -58,9 +68,6 @@ if(NOT EXISTS ${RKNN_INCLUDE_DIR}/rknn_api.h)
         "RKNN headers not found in ${RKNN_INCLUDE_DIR}. "
         "Set -DRKNN_INCLUDE_DIR=<path-containing-rknn_api.h>.")
 endif()
-
-# Avoid building shared libraries
-set(BUILD_SHARED_LIBS OFF)
 
 # -----------------------------------------------------------------------------
 # Eigen

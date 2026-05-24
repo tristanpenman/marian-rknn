@@ -6,6 +6,8 @@ on:
     paths:
       - cpp/**
       - thirdparty/**
+      - CMakeLists.txt
+      - scripts/**
       - Dockerfile.android
       - Dockerfile.native
       - .github/workflows/build.yml
@@ -13,6 +15,8 @@ on:
     paths:
       - cpp/**
       - thirdparty/**
+      - CMakeLists.txt
+      - scripts/**
       - Dockerfile.android
       - Dockerfile.native
       - .github/workflows/build.yml
@@ -59,11 +63,11 @@ jobs:
           docker run --rm \
             -v "$PWD":/workspace \
             marian-rknn-native \
-            bash -c "cmake -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build --config Release"
+            bash -c "scripts/build-native.sh"
 
       - name: Upload marian-rknn binary
         uses: actions/upload-artifact@v4
         with:
           name: marian-rknn-linux-aarch64
-          path: build/marian-rknn
+          path: build-native/marian-rknn
           if-no-files-found: error

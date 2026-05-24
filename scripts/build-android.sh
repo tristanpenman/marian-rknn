@@ -9,9 +9,9 @@ if [[ "${1:-}" == "docker" ]]; then
   exec docker compose run --rm --remove-orphans --build android ./scripts/build-android.sh "$@"
 fi
 
+BUILD_DIR="${BUILD_DIR:-${ROOT_DIR}/build-android}"
+BUILD_TYPE="${1:-Release}"
 NDK_PATH="${ANDROID_NDK_HOME:-}"
-RKNN_RUNTIME_SO="${ROOT_DIR}/thirdparty/rknpu2/lib-android/arm64-v8a/librknnrt.so"
-BUILD_TYPE="Release"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -48,16 +48,13 @@ USAGE
   exit 1
 fi
 
-BUILD_DIR="${ROOT_DIR}/build-android"
-
 cmake -S "${ROOT_DIR}" -B "${BUILD_DIR}" \
   -DANDROID_ABI=arm64-v8a \
   -DANDROID_PLATFORM=android-34 \
   -DCMAKE_TOOLCHAIN_FILE="${NDK_PATH}/build/cmake/android.toolchain.cmake" \
   -DCMAKE_BUILD_TYPE="${BUILD_TYPE}" \
   -DBUILD_TESTING=OFF \
-  -DMARIAN_RKNN_BUILD_BENCHMARK=ON \
-  -DRKNN_RUNTIME_LIB="${RKNN_RUNTIME_SO}"
+  -DMARIAN_RKNN_BUILD_BENCHMARK=ON
 
 cmake --build "${BUILD_DIR}" -- -j"$(nproc)"
 
