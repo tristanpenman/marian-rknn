@@ -20,6 +20,8 @@
 
 #include <rknn_api.h>
 
+const char* rknn_error_message(int ret);
+
 enum API_TYPE
 {
     NORMAL_API = 0,

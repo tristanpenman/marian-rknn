@@ -46,6 +46,42 @@ void dump_tensor_attr(const rknn_tensor_attr *attr)
 
 } // namespace
 
+const char* rknn_error_message(int ret)
+{
+    switch (ret) {
+    case RKNN_SUCC:
+        return "RKNN_SUCC (0): execute succeeded";
+    case RKNN_ERR_FAIL:
+        return "RKNN_ERR_FAIL (-1): execute failed";
+    case RKNN_ERR_TIMEOUT:
+        return "RKNN_ERR_TIMEOUT (-2): execute timed out";
+    case RKNN_ERR_DEVICE_UNAVAILABLE:
+        return "RKNN_ERR_DEVICE_UNAVAILABLE (-3): device is unavailable";
+    case RKNN_ERR_MALLOC_FAIL:
+        return "RKNN_ERR_MALLOC_FAIL (-4): memory allocation failed";
+    case RKNN_ERR_PARAM_INVALID:
+        return "RKNN_ERR_PARAM_INVALID (-5): parameter is invalid";
+    case RKNN_ERR_MODEL_INVALID:
+        return "RKNN_ERR_MODEL_INVALID (-6): model is invalid";
+    case RKNN_ERR_CTX_INVALID:
+        return "RKNN_ERR_CTX_INVALID (-7): context is invalid";
+    case RKNN_ERR_INPUT_INVALID:
+        return "RKNN_ERR_INPUT_INVALID (-8): input is invalid";
+    case RKNN_ERR_OUTPUT_INVALID:
+        return "RKNN_ERR_OUTPUT_INVALID (-9): output is invalid";
+    case RKNN_ERR_DEVICE_UNMATCH:
+        return "RKNN_ERR_DEVICE_UNMATCH (-10): SDK and NPU driver or firmware do not match";
+    case RKNN_ERR_INCOMPATILE_PRE_COMPILE_MODEL:
+        return "RKNN_ERR_INCOMPATILE_PRE_COMPILE_MODEL (-11): pre-compiled model is incompatible with current driver";
+    case RKNN_ERR_INCOMPATILE_OPTIMIZATION_LEVEL_VERSION:
+        return "RKNN_ERR_INCOMPATIBLE_OPTIMIZATION_LEVEL_VERSION (-12): model optimization level is incompatible with current driver";
+    case RKNN_ERR_TARGET_PLATFORM_UNMATCH:
+        return "RKNN_ERR_TARGET_PLATFORM_UNMATCH (-13): model target platform does not match current platform";
+    default:
+        return "Unknown RKNN error code";
+    }
+}
+
 int rknn_utils_init(MODEL_INFO* model_info, std::optional<int> num_cores)
 {
     if (model_info->m_path.empty()) {
@@ -56,14 +92,14 @@ int rknn_utils_init(MODEL_INFO* model_info, std::optional<int> num_cores)
     int ret = 0;
     ret = rknn_init(&model_info->ctx, model_info->m_path.data(), 0, model_info->init_flag, nullptr);
     if (ret < 0) {
-        LOG(ERROR) << "rknn_init failed. ret=" << ret;
+        LOG(ERROR) << "rknn_init failed: " << rknn_error_message(ret);
         return -1;
     }
 
     rknn_sdk_version version;
     ret = rknn_query(model_info->ctx, RKNN_QUERY_SDK_VERSION, &version, sizeof(rknn_sdk_version));
     if (ret != 0) {
-        LOG(ERROR) << "Failed to query RKNN runtime information, error=" << ret;
+        LOG(ERROR) << "Failed to query RKNN runtime information: " << rknn_error_message(ret);
         return -1;
     }
 
@@ -88,7 +124,7 @@ int rknn_utils_init(MODEL_INFO* model_info, std::optional<int> num_cores)
     }
 
     if (ret != 0) {
-        LOG(ERROR) << "Failed to set RKNN core mask, error=" << ret;
+        LOG(ERROR) << "Failed to set RKNN core mask: " << rknn_error_message(ret);
         return -1;
     }
 
@@ -102,7 +138,7 @@ int rknn_utils_query_model_info(MODEL_INFO* model_info)
     rknn_input_output_num io_num;
     int ret = rknn_query(model_info->ctx, RKNN_QUERY_IN_OUT_NUM, &io_num, sizeof(io_num));
     if (ret != RKNN_SUCC) {
-        LOG(ERROR) << "rknn_query failed. ret=" << ret;
+        LOG(ERROR) << "rknn_query failed: " << rknn_error_message(ret);
         return -1;
     }
 
@@ -117,7 +153,7 @@ int rknn_utils_query_model_info(MODEL_INFO* model_info)
 
         ret = rknn_query(model_info->ctx, RKNN_QUERY_INPUT_DYNAMIC_RANGE, &input_range, sizeof(input_range));
         if (ret != RKNN_SUCC) {
-            LOG(VERBOSE) << "No input dynamic range for input index " << i << ". ret=" << ret;
+            LOG(VERBOSE) << "No input dynamic range for input index " << i << ": " << rknn_error_message(ret);
             continue;
         }
 
@@ -157,7 +193,7 @@ int rknn_utils_query_model_info(MODEL_INFO* model_info)
         model_info->in_attr[i].index = i;
         ret = rknn_query(model_info->ctx, RKNN_QUERY_INPUT_ATTR, &model_info->in_attr[i], sizeof(rknn_tensor_attr));
         if (ret != RKNN_SUCC) {
-            LOG(ERROR) << "rknn_query failed. ret=" << ret;
+            LOG(ERROR) << "rknn_query failed: " << rknn_error_message(ret);
             return -1;
         }
         if (Logger::verbose()) {
@@ -170,7 +206,7 @@ int rknn_utils_query_model_info(MODEL_INFO* model_info)
         model_info->out_attr[i].index = i;
         ret = rknn_query(model_info->ctx, RKNN_QUERY_OUTPUT_ATTR, &model_info->out_attr[i], sizeof(rknn_tensor_attr));
         if (ret != RKNN_SUCC) {
-            LOG(ERROR) << "rknn_query failed. ret=" << ret;
+            LOG(ERROR) << "rknn_query failed: " << rknn_error_message(ret);
             return -1;
         }
         if (Logger::verbose()) {
@@ -181,7 +217,7 @@ int rknn_utils_query_model_info(MODEL_INFO* model_info)
     if (model_info->init_flag > 0) {
         ret = rknn_query(model_info->ctx, RKNN_QUERY_MEM_SIZE, &model_info->mem_size, sizeof(model_info->mem_size));
         if (ret != RKNN_SUCC) {
-            LOG(ERROR) << "rknn_query failed. ret=" << ret;
+            LOG(ERROR) << "rknn_query failed: " << rknn_error_message(ret);
             return -1;
         }
     }

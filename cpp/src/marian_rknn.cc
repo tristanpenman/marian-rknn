@@ -104,13 +104,13 @@ int rknn_marian_lm_head_t::apply(const half* hidden, float* out_logits) const
 
             int ret = rknn_matmul_set_io_mem(chunk.ctx, chunk.A, const_cast<rknn_matmul_tensor_attr*>(&chunk.io_attr.A));
             if (ret < 0) {
-                LOG(ERROR) << "rknn_matmul_set_io_mem(A) failed. ret=" << ret;
+                LOG(ERROR) << "rknn_matmul_set_io_mem(A) failed: " << rknn_error_message(ret);
                 return -1;
             }
 
             ret = rknn_matmul_run(chunk.ctx);
             if (ret < 0) {
-                LOG(ERROR) << "rknn_matmul_run failed. ret=" << ret;
+                LOG(ERROR) << "rknn_matmul_run failed: " << rknn_error_message(ret);
                 return -1;
             }
 
@@ -163,7 +163,7 @@ int init_lm_head_matmul(rknn_marian_lm_head_t* lm_head)
         if (ret < 0) {
             LOG(WARNING) << "rknn_matmul_create failed for LM head chunk offset=" << offset
                          << " size=" << chunk.vocab_size << " padded_size=" << chunk.padded_vocab_size
-                         << ". Falling back to Eigen. ret=" << ret;
+                         << ". Falling back to Eigen: " << rknn_error_message(ret);
             release_lm_head_matmul(lm_head);
             return -1;
         }
@@ -195,14 +195,14 @@ int init_lm_head_matmul(rknn_marian_lm_head_t* lm_head)
 
         ret = rknn_matmul_set_io_mem(chunk.ctx, chunk.B, &chunk.io_attr.B);
         if (ret < 0) {
-            LOG(WARNING) << "rknn_matmul_set_io_mem(B) failed for LM head. Falling back to Eigen. ret=" << ret;
+            LOG(WARNING) << "rknn_matmul_set_io_mem(B) failed for LM head. Falling back to Eigen: " << rknn_error_message(ret);
             lm_head->matmul_chunks.push_back(chunk);
             release_lm_head_matmul(lm_head);
             return -1;
         }
         ret = rknn_matmul_set_io_mem(chunk.ctx, chunk.C, &chunk.io_attr.C);
         if (ret < 0) {
-            LOG(WARNING) << "rknn_matmul_set_io_mem(C) failed for LM head. Falling back to Eigen. ret=" << ret;
+            LOG(WARNING) << "rknn_matmul_set_io_mem(C) failed for LM head. Falling back to Eigen: " << rknn_error_message(ret);
             lm_head->matmul_chunks.push_back(chunk);
             release_lm_head_matmul(lm_head);
             return -1;
@@ -273,7 +273,7 @@ int greedy_decode(
         timer.tok();
         auto run_end = std::chrono::steady_clock::now();
         if (ret < 0) {
-            LOG(ERROR) << "rknn_run failed. ret=" << ret;
+            LOG(ERROR) << "rknn_run failed: " << rknn_error_message(ret);
             return -1;
         }
         if (stats) {
@@ -446,7 +446,7 @@ int rknn_nmt_process(
     timer.tik();
     int ret = rknn_run(app_ctx->enc.ctx, nullptr);
     if (ret < 0) {
-        LOG(ERROR) << "rknn_run failed. ret=" << ret;
+        LOG(ERROR) << "rknn_run failed: " << rknn_error_message(ret);
         return -1;
     }
     timer.tok();
@@ -632,7 +632,7 @@ int init_marian_rknn_model(const std::string &model_dir, rknn_marian_rknn_contex
     for (int input_index = 0; input_index < app_ctx->enc.n_input; input_index++) {
         ret = rknn_set_io_mem(app_ctx->enc.ctx, app_ctx->enc.input_mem[input_index], &app_ctx->enc.in_attr[input_index]);
         if (ret < 0) {
-            LOG(ERROR) << "rknn_set_io_mem failed. ret=" << ret;
+            LOG(ERROR) << "rknn_set_io_mem failed: " << rknn_error_message(ret);
             return -1;
         }
     }
@@ -641,7 +641,7 @@ int init_marian_rknn_model(const std::string &model_dir, rknn_marian_rknn_contex
     for (int output_index=0; output_index < app_ctx->enc.n_output; output_index++) {
         ret = rknn_set_io_mem(app_ctx->enc.ctx, app_ctx->enc.output_mem[output_index], &app_ctx->enc.out_attr[output_index]);
         if (ret < 0) {
-            LOG(ERROR) << "rknn_set_io_mem failed. ret=" << ret;
+            LOG(ERROR) << "rknn_set_io_mem failed: " << rknn_error_message(ret);
             return -1;
         }
     }
@@ -655,7 +655,7 @@ int init_marian_rknn_model(const std::string &model_dir, rknn_marian_rknn_contex
         }
         ret = rknn_set_io_mem(app_ctx->dec.ctx, app_ctx->dec.input_mem[input_index], &app_ctx->dec.in_attr[input_index]);
         if (ret < 0) {
-            LOG(ERROR) << "rknn_set_io_mem failed. ret=" << ret;
+            LOG(ERROR) << "rknn_set_io_mem failed: " << rknn_error_message(ret);
             return -1;
         }
     }
@@ -669,7 +669,7 @@ int init_marian_rknn_model(const std::string &model_dir, rknn_marian_rknn_contex
         }
         ret = rknn_set_io_mem(app_ctx->dec.ctx, app_ctx->dec.output_mem[output_index], &app_ctx->dec.out_attr[output_index]);
         if (ret < 0) {
-            LOG(ERROR) << "rknn_set_io_mem failed. ret=" << ret;
+            LOG(ERROR) << "rknn_set_io_mem failed: " << rknn_error_message(ret);
             return -1;
         }
     }
