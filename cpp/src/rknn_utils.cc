@@ -196,7 +196,9 @@ int rknn_utils_query_model_info(MODEL_INFO* model_info)
             LOG(ERROR) << "rknn_query failed: " << rknn_error_message(ret);
             return -1;
         }
-        LOG(VERBOSE) << "  " << tensor_attr_to_string(model_info->in_attr[i]);
+        if (Logger::verbose()) {
+            LOG(VERBOSE) << "  " << tensor_attr_to_string(model_info->in_attr[i]);
+        }
     }
 
     LOG(VERBOSE) << "OUTPUTS:";
@@ -207,7 +209,9 @@ int rknn_utils_query_model_info(MODEL_INFO* model_info)
             LOG(ERROR) << "rknn_query failed: " << rknn_error_message(ret);
             return -1;
         }
-        LOG(VERBOSE) << "  " << tensor_attr_to_string(model_info->out_attr[i]);
+        if (Logger::verbose()) {
+            LOG(VERBOSE) << "  " << tensor_attr_to_string(model_info->out_attr[i]);
+        }
     }
 
     if (model_info->init_flag > 0) {

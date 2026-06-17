@@ -316,16 +316,21 @@ int greedy_decode(
     timer_total.tok();
 
     int output_len = 0;
-    std::ostringstream output_stream;
-    output_stream << "Decoder output tokens:";
     for (int i = 0; i < app_ctx->dec_len; i++) {
         if (output_token[i] == app_ctx->eos_token_id || output_token[i] == app_ctx->pad_token_id) {
             break;
         }
-        output_stream << " " << output_token[i];
         output_len++;
     }
-    LOG(VERBOSE) << output_stream.str();
+
+    if (Logger::verbose()) {
+        std::ostringstream output_stream;
+        output_stream << "Decoder output tokens:";
+        for (int i = 0; i < output_len; i++) {
+            output_stream << " " << output_token[i];
+        }
+        LOG(VERBOSE) << output_stream.str();
+    }
 
     timer.print_time("RKNN decoder once run");
 
@@ -759,12 +764,14 @@ int inference_marian_rknn_model(
 
     // encode tokens
     auto pieces = app_ctx->spm_src.EncodeAsPieces(input_sentence);
-    std::ostringstream pieces_stream;
-    pieces_stream << "sentence pieces:";
-    for (const auto& piece : pieces) {
-        pieces_stream << " " << piece;
+    if (Logger::verbose()) {
+        std::ostringstream pieces_stream;
+        pieces_stream << "sentence pieces:";
+        for (const auto& piece : pieces) {
+            pieces_stream << " " << piece;
+        }
+        LOG(VERBOSE) << pieces_stream.str();
     }
-    LOG(VERBOSE) << pieces_stream.str();
 
     // apply vocab mapping
     LOG(VERBOSE) << "Apply vocab mapping";

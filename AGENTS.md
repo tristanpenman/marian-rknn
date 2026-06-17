@@ -46,3 +46,21 @@ The build is intended to be run via Docker. The target is an RK3588 device, so t
 ## Markdown
 
 Markdown documents should use soft-wrapping. Tables should be aligned to be human readable.
+
+## Logging
+
+Verbose logging is potentially expensive.
+
+Be careful with calls to the logger like this:
+
+```c++
+LOG(VERBOSE) << "Something non trivial: " << nonTrivial();
+```
+
+Wrap those with a check that verbose logging is enabled, using `Logger::verbose()`:
+
+```c++
+if (Logger::verbose()) {
+  LOG(VERBOSE) << "Something non trivial: " << nonTrivial();
+}
+```
