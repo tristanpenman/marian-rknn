@@ -13,6 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <cstdint>
 #include <cstring>
 #include <sstream>
 #include <string>
@@ -20,31 +21,6 @@
 #include "rknn_api.h"
 #include "rknn_utils.h"
 #include "logger.h"
-
-namespace {
-
-void dump_tensor_attr(const rknn_tensor_attr *attr)
-{
-    std::ostringstream dims_stream;
-    for (int i = 0; i < attr->n_dims; i++) {
-        dims_stream << attr->dims[i] << ",";
-    }
-
-    LOG(VERBOSE) << "  index=" << attr->index
-                 << ", name=" << attr->name
-                 << ", n_dims=" << attr->n_dims
-                 << ", dims=[" << dims_stream.str()
-                 << "], n_elems=" << attr->n_elems
-                 << ", size=" << attr->size
-                 << ", size_with_stride=" << attr->size_with_stride
-                 << ", fmt=" << get_format_string(attr->fmt)
-                 << ", type=" << get_type_string(attr->type)
-                 << ", qnt_type=" << get_qnt_type_string(attr->qnt_type)
-                 << ", zp=" << attr->zp
-                 << ", scale=" << attr->scale;
-}
-
-} // namespace
 
 const char* rknn_error_message(int ret)
 {
@@ -80,6 +56,30 @@ const char* rknn_error_message(int ret)
     default:
         return "Unknown RKNN error code";
     }
+}
+
+std::string tensor_attr_to_string(const rknn_tensor_attr& attr)
+{
+    std::ostringstream stream;
+    stream << "index=" << attr.index
+           << " name=" << attr.name
+           << " n_dims=" << attr.n_dims
+           << " dims=[";
+    for (uint32_t i = 0; i < attr.n_dims && i < RKNN_MAX_DIMS; ++i) {
+        if (i > 0) {
+            stream << ", ";
+        }
+        stream << attr.dims[i];
+    }
+    stream << "] n_elems=" << attr.n_elems
+           << " size=" << attr.size
+           << " size_with_stride=" << attr.size_with_stride
+           << " fmt=" << get_format_string(attr.fmt)
+           << " type=" << get_type_string(attr.type)
+           << " qnt_type=" << get_qnt_type_string(attr.qnt_type)
+           << " zp=" << attr.zp
+           << " scale=" << attr.scale;
+    return stream.str();
 }
 
 int rknn_utils_init(MODEL_INFO* model_info, std::optional<int> num_cores)
@@ -196,9 +196,7 @@ int rknn_utils_query_model_info(MODEL_INFO* model_info)
             LOG(ERROR) << "rknn_query failed: " << rknn_error_message(ret);
             return -1;
         }
-        if (Logger::verbose()) {
-            dump_tensor_attr(&model_info->in_attr[i]);
-        }
+        LOG(VERBOSE) << "  " << tensor_attr_to_string(model_info->in_attr[i]);
     }
 
     LOG(VERBOSE) << "OUTPUTS:";
@@ -209,9 +207,7 @@ int rknn_utils_query_model_info(MODEL_INFO* model_info)
             LOG(ERROR) << "rknn_query failed: " << rknn_error_message(ret);
             return -1;
         }
-        if (Logger::verbose()) {
-            dump_tensor_attr(&model_info->out_attr[i]);
-        }
+        LOG(VERBOSE) << "  " << tensor_attr_to_string(model_info->out_attr[i]);
     }
 
     if (model_info->init_flag > 0) {
