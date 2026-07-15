@@ -655,7 +655,9 @@ int init_marian_rknn_model(const std::string &model_dir, rknn_marian_rknn_contex
     for (int input_index=0; input_index< app_ctx->dec.n_input; input_index++) {
         if (app_ctx->dec.in_attr[input_index].fmt == RKNN_TENSOR_NHWC) {
             rknn_query(app_ctx->dec.ctx, RKNN_QUERY_NATIVE_NC1HWC2_INPUT_ATTR, &app_ctx->dec.in_attr[input_index], sizeof(app_ctx->dec.in_attr[input_index]));
-            app_ctx->dec.input_mem[input_index] = rknn_create_mem(app_ctx->dec.ctx, app_ctx->dec.in_attr[input_index].n_elems * sizeof(float)*2);
+            app_ctx->dec.input_mem[input_index].reset(
+                app_ctx->dec.ctx,
+                rknn_create_mem(app_ctx->dec.ctx, app_ctx->dec.in_attr[input_index].n_elems * sizeof(float)*2));
             app_ctx->dec.in_attr[input_index].pass_through = 1;
         }
         ret = rknn_set_io_mem(app_ctx->dec.ctx, app_ctx->dec.input_mem[input_index], &app_ctx->dec.in_attr[input_index]);
@@ -669,8 +671,9 @@ int init_marian_rknn_model(const std::string &model_dir, rknn_marian_rknn_contex
     for (int output_index=0; output_index< app_ctx->dec.n_output; output_index++) {
         if (app_ctx->dec.out_attr[output_index].fmt == RKNN_TENSOR_NCHW) {
             rknn_query(app_ctx->dec.ctx, RKNN_QUERY_NATIVE_NC1HWC2_OUTPUT_ATTR, &app_ctx->dec.out_attr[output_index], sizeof(app_ctx->dec.out_attr[output_index]));
-            rknn_destroy_mem(app_ctx->dec.ctx, app_ctx->dec.output_mem[output_index]);
-            app_ctx->dec.output_mem[output_index] = rknn_create_mem(app_ctx->dec.ctx, app_ctx->dec.out_attr[output_index].n_elems * sizeof(float)*2);
+            app_ctx->dec.output_mem[output_index].reset(
+                app_ctx->dec.ctx,
+                rknn_create_mem(app_ctx->dec.ctx, app_ctx->dec.out_attr[output_index].n_elems * sizeof(float)*2));
         }
         ret = rknn_set_io_mem(app_ctx->dec.ctx, app_ctx->dec.output_mem[output_index], &app_ctx->dec.out_attr[output_index]);
         if (ret < 0) {
