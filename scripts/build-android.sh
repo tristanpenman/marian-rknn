@@ -6,7 +6,9 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 if [[ "${1:-}" == "docker" ]]; then
   shift
   cd "${ROOT_DIR}"
-  exec docker compose run --rm --remove-orphans --build android ./scripts/build-android.sh "$@"
+  exec docker compose run --rm --remove-orphans --build \
+    --user "$(id -u):$(id -g)" -e HOME=/tmp \
+    android ./scripts/build-android.sh "$@"
 fi
 
 BUILD_DIR="${BUILD_DIR:-${ROOT_DIR}/build-android}"
