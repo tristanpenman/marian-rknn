@@ -12,93 +12,89 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "logger.h"
+
 #include <iostream>
 #include <mutex>
 #include <utility>
 
-#include "logger.h"
-
-using namespace std;
-
-atomic<ostream*> Logger::m_os = nullptr;
-atomic<Logger::Level> Logger::m_minLevel = Level::Info;
-mutex Logger::m_mutex;
+std::atomic<std::ostream*> Logger::g_output = nullptr;
+std::atomic<Logger::Level> Logger::g_minLevel = Logger::Level::kInfo;
+std::mutex Logger::g_mutex;
 
 namespace {
+
 const char* levelLabel(Logger::Level level)
 {
     switch (level) {
-    case Logger::Level::Info:
+    case Logger::Level::kInfo:
         return "I";
-    case Logger::Level::Warning:
+    case Logger::Level::kWarning:
         return "W";
-    case Logger::Level::Error:
+    case Logger::Level::kError:
         return "E";
-    case Logger::Level::Verbose:
+    case Logger::Level::kVerbose:
         return "V";
     default:
         return "U";
     }
 }
-} // namespace
 
-Logger::Logger(string name)
-  : m_name(std::move(name))
+}  // namespace
+
+Logger::Logger(std::string name)
+    : name_(std::move(name))
 {
 }
 
 void Logger::configure()
 {
-    m_os = &cout;
+    g_output = &std::cout;
 }
 
-void Logger::configure(ostream &os)
+void Logger::configure(std::ostream& os)
 {
-    m_os = &os;
+    g_output = &os;
 }
 
 void Logger::configure(Level minLevel)
 {
-    m_minLevel = minLevel;
+    g_minLevel = minLevel;
 }
 
-void Logger::configure(ostream &os, Level minLevel)
+void Logger::configure(std::ostream& os, Level minLevel)
 {
-    m_os = &os;
-    m_minLevel = minLevel;
+    g_output = &os;
+    g_minLevel = minLevel;
 }
 
-//
-// Logger::Writer implementation
-//
-
-Logger::Writer::Writer(Logger &logger, Level level)
-  : m_logger(logger)
-  , m_level(level)
+Logger::Writer::Writer(Logger& logger, Level level)
+    : logger_(logger)
+    , level_(level)
 {
-    m_enabled = m_os.load() && level >= m_minLevel.load();
-    if (!m_enabled) {
+    enabled_ = g_output.load() && level >= g_minLevel.load();
+    if (!enabled_) {
         return;
     }
 
-    m_ss << "[" << levelLabel(level) << "]";
-    if (!m_logger.m_name.empty()) {
-        m_ss << "[" << m_logger.m_name << "]";
+    stream_ << "[" << levelLabel(level) << "]";
+    if (!logger_.name_.empty()) {
+        stream_ << "[" << logger_.name_ << "]";
     }
-    m_ss << " ";
+    stream_ << " ";
 }
 
 Logger::Writer::~Writer()
 {
-    if (!m_enabled) {
+    if (!enabled_) {
         return;
     }
 
-    ostream* os = m_os.load();
+    std::ostream* os = g_output.load();
     if (!os) {
         return;
     }
 
-    lock_guard lock(m_mutex);
-    *os << m_ss.str() << '\n';
+    std::lock_guard lock(g_mutex);
+    *os << stream_.str() << '\n';
 }

@@ -16,14 +16,14 @@
 
 #include <chrono>
 
-inline double elapsed_ms(
+inline double elapsedMs(
     const std::chrono::steady_clock::time_point& start,
     const std::chrono::steady_clock::time_point& end)
 {
     return std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(end - start).count();
 }
 
-inline double elapsed_seconds(
+inline double elapsedSeconds(
     const std::chrono::steady_clock::time_point& start,
     const std::chrono::steady_clock::time_point& end)
 {

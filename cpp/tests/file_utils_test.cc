@@ -12,17 +12,17 @@ namespace {
 
 TEST(FileUtilsTest, JoinPathHandlesEmptyDir)
 {
-    EXPECT_EQ(join_path("", "file.txt"), "file.txt");
+    EXPECT_EQ(joinPath("", "file.txt"), "file.txt");
 }
 
 TEST(FileUtilsTest, JoinPathPreservesTrailingSlash)
 {
-    EXPECT_EQ(join_path("/tmp/", "data.bin"), "/tmp/data.bin");
+    EXPECT_EQ(joinPath("/tmp/", "data.bin"), "/tmp/data.bin");
 }
 
 TEST(FileUtilsTest, JoinPathAddsSeparator)
 {
-    EXPECT_EQ(join_path("/tmp", "data.bin"), "/tmp/data.bin");
+    EXPECT_EQ(joinPath("/tmp", "data.bin"), "/tmp/data.bin");
 }
 
 TEST(FileUtilsTest, ReadMapFromFileParsesJsonObject)
@@ -33,7 +33,7 @@ TEST(FileUtilsTest, ReadMapFromFileParsesJsonObject)
     output.close();
 
     std::unordered_map<std::string, int> values;
-    read_map_from_file(path, values);
+    readMapFromFile(path, values);
 
     EXPECT_EQ(values.size(), 2u);
     EXPECT_EQ(values.at("hello"), 1);
@@ -44,13 +44,13 @@ TEST(FileUtilsTest, ReadMapFromFileParsesJsonObject)
 
 TEST(FileUtilsTest, JoinPathWithRootDirectory)
 {
-    EXPECT_EQ(join_path("/", "file.txt"), "/file.txt");
+    EXPECT_EQ(joinPath("/", "file.txt"), "/file.txt");
 }
 
 TEST(FileUtilsTest, ReadMapFromFileThrowsOnMissingFile)
 {
     std::unordered_map<std::string, int> values = {{"existing", 1}};
-    EXPECT_THROW(read_map_from_file("does_not_exist.json", values), std::runtime_error);
+    EXPECT_THROW(readMapFromFile("does_not_exist.json", values), std::runtime_error);
     EXPECT_EQ(values.size(), 1u);
 }
 
@@ -62,7 +62,7 @@ TEST(FileUtilsTest, ReadMapFromFileRejectsNonObjectJson)
     output.close();
 
     std::unordered_map<std::string, int> values;
-    EXPECT_THROW(read_map_from_file(path, values), std::runtime_error);
+    EXPECT_THROW(readMapFromFile(path, values), std::runtime_error);
 
     std::remove(path.c_str());
 }
@@ -75,7 +75,7 @@ TEST(FileUtilsTest, ReadMapFromFileRejectsNonIntegerValue)
     output.close();
 
     std::unordered_map<std::string, int> values;
-    EXPECT_THROW(read_map_from_file(path, values), nlohmann::json::exception);
+    EXPECT_THROW(readMapFromFile(path, values), nlohmann::json::exception);
 
     std::remove(path.c_str());
 }

@@ -15,6 +15,7 @@
 
 #pragma once
 
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <utility>
@@ -22,58 +23,68 @@
 
 #include <rknn_api.h>
 
-const char* rknn_error_message(int ret);
-std::string tensor_attr_to_string(const rknn_tensor_attr& attr);
+const char* rknnErrorMessage(int ret);
+std::string tensorAttrToString(const rknn_tensor_attr& attr);
 
-enum API_TYPE
+enum class ApiType
 {
-    NORMAL_API = 0,
-    ZERO_COPY_API
+    kNormal,
+    kZeroCopy
 };
 
-struct RKNN_UTILS_INPUT_PARAM
+struct RknnUtilsInputParam
 {
     /*
         RKNN_INPUT has follow param:
-        index, buf, size, pass_through, fmt, type
+        index, buf, size, passThrough, fmt, type
 
         Here we keep:
-            pass_through,
-            'fmt' as 'layout_fmt',
+            passThrough,
+            'fmt' as 'layoutFormat',
             'type' as 'dtype'
 
         And add:
-            api_type to record normal_api/ zero_copy_api
+            apiType to record normal or zero-copy API usage
             enable to assign if this param was used
-            _already_init to record if this param was already init
+            alreadyInit to record if this param was already init
     */
-    uint8_t pass_through{};
-    rknn_tensor_format layout_fmt{};
+    uint8_t passThrough{};
+    rknn_tensor_format layoutFormat{};
     rknn_tensor_type dtype{};
 
-    API_TYPE api_type = NORMAL_API;
+    ApiType apiType = ApiType::kNormal;
     bool enable = false;
-    bool _already_init = false;
+    bool alreadyInit = false;
 };
 
-struct RKNN_UTILS_OUTPUT_PARAM
+struct RknnUtilsOutputParam
 {
-    API_TYPE api_type = NORMAL_API;
+    ApiType apiType = ApiType::kNormal;
     bool enable = false;
-    bool _already_init = false;
+    bool alreadyInit = false;
 };
 
 class RknnContext
 {
 public:
     RknnContext() = default;
-    explicit RknnContext(rknn_context ctx) : ctx_(ctx) {}
-    ~RknnContext() { reset(); }
+    explicit RknnContext(rknn_context ctx)
+        : ctx_(ctx)
+    {
+    }
+
+    ~RknnContext()
+    {
+        reset();
+    }
 
     RknnContext(const RknnContext&) = delete;
     RknnContext& operator=(const RknnContext&) = delete;
 
-    RknnContext(RknnContext&& other) noexcept : ctx_(std::exchange(other.ctx_, 0)) {}
+    RknnContext(RknnContext&& other) noexcept
+        : ctx_(std::exchange(other.ctx_, 0))
+    {
+    }
     RknnContext& operator=(RknnContext&& other) noexcept
     {
         if (this != &other) {
@@ -83,8 +94,15 @@ public:
         return *this;
     }
 
-    operator rknn_context() const { return ctx_; }
-    rknn_context get() const { return ctx_; }
+    operator rknn_context() const
+    {
+        return ctx_;
+    }
+
+    rknn_context get() const
+    {
+        return ctx_;
+    }
     rknn_context* put()
     {
         reset();
@@ -106,8 +124,16 @@ class RknnMemHandle
 {
 public:
     RknnMemHandle() = default;
-    RknnMemHandle(rknn_context ctx, rknn_tensor_mem* mem) : ctx_(ctx), mem_(mem) {}
-    ~RknnMemHandle() { reset(); }
+    RknnMemHandle(rknn_context ctx, rknn_tensor_mem* mem)
+        : ctx_(ctx)
+        , mem_(mem)
+    {
+    }
+
+    ~RknnMemHandle()
+    {
+        reset();
+    }
 
     RknnMemHandle(const RknnMemHandle&) = delete;
     RknnMemHandle& operator=(const RknnMemHandle&) = delete;
@@ -126,9 +152,20 @@ public:
         return *this;
     }
 
-    operator rknn_tensor_mem*() const { return mem_; }
-    rknn_tensor_mem* operator->() const { return mem_; }
-    rknn_tensor_mem* get() const { return mem_; }
+    operator rknn_tensor_mem*() const
+    {
+        return mem_;
+    }
+
+    rknn_tensor_mem* operator->() const
+    {
+        return mem_;
+    }
+
+    rknn_tensor_mem* get() const
+    {
+        return mem_;
+    }
 
     void reset(rknn_context ctx = 0, rknn_tensor_mem* mem = nullptr)
     {
@@ -144,44 +181,44 @@ private:
     rknn_tensor_mem* mem_ = nullptr;
 };
 
-struct MODEL_INFO
+struct ModelInfo
 {
-    std::string m_path;
+    std::string path;
     RknnContext ctx;
-    bool is_dyn_shape = false;
+    bool isDynamicShape = false;
 
-    size_t n_input = 0;
-    std::vector<rknn_tensor_attr> in_attr;
-    std::vector<rknn_tensor_attr> in_attr_native;
+    size_t inputCount = 0;
+    std::vector<rknn_tensor_attr> inputAttrs;
+    std::vector<rknn_tensor_attr> nativeInputAttrs;
     std::vector<rknn_input> inputs;
-    std::vector<RknnMemHandle> input_mem;
-    std::vector<RKNN_UTILS_INPUT_PARAM> rknn_input_param;
+    std::vector<RknnMemHandle> inputMem;
+    std::vector<RknnUtilsInputParam> inputParams;
 
-    size_t n_output = 0;
-    std::vector<rknn_tensor_attr> out_attr;
-    std::vector<rknn_tensor_attr> out_attr_native;
+    size_t outputCount = 0;
+    std::vector<rknn_tensor_attr> outputAttrs;
+    std::vector<rknn_tensor_attr> nativeOutputAttrs;
     std::vector<rknn_output> outputs;
-    std::vector<RknnMemHandle> output_mem;
-    std::vector<RKNN_UTILS_OUTPUT_PARAM> rknn_output_param;
+    std::vector<RknnMemHandle> outputMem;
+    std::vector<RknnUtilsOutputParam> outputParams;
 
-    int diff_input_idx = -1;
-    int init_flag = 0;
+    int diffInputIndex = -1;
+    int initFlag = 0;
 
-    std::vector<rknn_input_range> dyn_range;
-    rknn_mem_size mem_size{};
-    RknnMemHandle internal_mem_outside;
-    RknnMemHandle internal_mem_max;
+    std::vector<rknn_input_range> dynRange;
+    rknn_mem_size memSize{};
+    RknnMemHandle internalMemOutside;
+    RknnMemHandle internalMemMax;
 };
 
-int rknn_utils_get_type_size(rknn_tensor_type type);
+int rknnUtilsGetTypeSize(rknn_tensor_type type);
 
-int rknn_utils_init(MODEL_INFO* model_info, std::optional<int> num_cores = std::nullopt);
-int rknn_utils_query_model_info(MODEL_INFO* model_info);
+int rknnUtilsInit(ModelInfo* modelInfo, std::optional<int> numCores = std::nullopt);
+int rknnUtilsQueryModelInfo(ModelInfo* modelInfo);
 
-int rknn_utils_init_input_buffer(MODEL_INFO* model_info, int node_index, API_TYPE api_type, uint8_t pass_through, rknn_tensor_type dtype, rknn_tensor_format layout_fmt);
-int rknn_utils_init_output_buffer(MODEL_INFO* model_info, int node_index, API_TYPE api_type);
+int rknnUtilsInitInputBuffer(ModelInfo* modelInfo, int nodeIndex, ApiType apiType, uint8_t passThrough, rknn_tensor_type dtype, rknn_tensor_format layoutFormat);
+int rknnUtilsInitOutputBuffer(ModelInfo* modelInfo, int nodeIndex, ApiType apiType);
 
-int rknn_utils_init_input_buffer_all(MODEL_INFO* model_info, API_TYPE default_api_type);
-int rknn_utils_init_output_buffer_all(MODEL_INFO* model_info, API_TYPE default_api_type);
+int rknnUtilsInitInputBufferAll(ModelInfo* modelInfo, ApiType defaultApiType);
+int rknnUtilsInitOutputBufferAll(ModelInfo* modelInfo, ApiType defaultApiType);
 
-int rknn_utils_release(MODEL_INFO* model_info);
+int rknnUtilsRelease(ModelInfo* modelInfo);

@@ -15,10 +15,10 @@
 #pragma once
 
 #include <atomic>
+#include <mutex>
 #include <ostream>
 #include <sstream>
 #include <string>
-#include <mutex>
 
 /**
  * Simple streaming logger
@@ -57,39 +57,40 @@
 class Logger
 {
 public:
-    enum class Level {
-        Verbose = 0,
-        Info = 1,
-        Warning = 2,
-        Error = 3
+    enum class Level
+    {
+        kVerbose = 0,
+        kInfo = 1,
+        kWarning = 2,
+        kError = 3
     };
 
     class Writer
     {
     public:
-        Writer(Logger &logger, Level level);
+        Writer(Logger& logger, Level level);
         ~Writer();
 
         template<typename T>
-        Writer& operator<<(T const & value)
+        Writer& operator<<(const T& value)
         {
-            if (m_enabled) {
-                m_ss << value;
+            if (enabled_) {
+                stream_ << value;
             }
 
             return *this;
         }
 
     private:
-        Logger &m_logger;
-        Level m_level;
-        std::stringstream m_ss;
-        bool m_enabled{false};
+        Logger& logger_;
+        Level level_;
+        std::stringstream stream_;
+        bool enabled_ = false;
     };
 
     explicit Logger(std::string name = {});
 
-    Writer operator()(const Level level = Level::Info)
+    Writer operator()(const Level level = Level::kInfo)
     {
         return Writer{*this, level};
     }
@@ -101,19 +102,19 @@ public:
 
     static bool verbose()
     {
-        return m_minLevel.load() <= Level::Verbose;
+        return g_minLevel.load() <= Level::kVerbose;
     }
 
 private:
-    static std::atomic<std::ostream*> m_os;
-    static std::atomic<Level> m_minLevel;
-    static std::mutex m_mutex;
+    static std::atomic<std::ostream*> g_output;
+    static std::atomic<Level> g_minLevel;
+    static std::mutex g_mutex;
 
-    std::string m_name;
+    std::string name_;
 };
 
 #define LOG     Logger()
-#define INFO    Logger::Level::Info
-#define WARNING Logger::Level::Warning
-#define ERROR   Logger::Level::Error
-#define VERBOSE Logger::Level::Verbose
+#define INFO    Logger::Level::kInfo
+#define WARNING Logger::Level::kWarning
+#define ERROR   Logger::Level::kError
+#define VERBOSE Logger::Level::kVerbose

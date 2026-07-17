@@ -14,6 +14,7 @@
 
 #include <chrono>
 #include <cstring>
+#include <exception>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
@@ -26,19 +27,19 @@
 
 namespace {
 
-void log_metric(const std::string& label, double value_ms)
+void logMetric(const std::string& label, double valueMs)
 {
-    LOG(INFO) << label << ": " << std::fixed << std::setprecision(3) << value_ms << " ms";
+    LOG(INFO) << label << ": " << std::fixed << std::setprecision(3) << valueMs << " ms";
 }
 
 }  // namespace
 
-int main(const int argc, char **argv)
+int main(const int argc, char** argv)
 {
     bool eigen = false;
     bool verbose = false;
-    std::vector<const char*> positional_args;
-    positional_args.reserve(static_cast<size_t>(argc - 1));
+    std::vector<const char*> positionalArgs;
+    positionalArgs.reserve(static_cast<size_t>(argc - 1));
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "-v") == 0 || strcmp(argv[i], "--verbose") == 0) {
             verbose = true;
@@ -48,124 +49,124 @@ int main(const int argc, char **argv)
             eigen = true;
             continue;
         }
-        positional_args.push_back(argv[i]);
+        positionalArgs.push_back(argv[i]);
     }
 
-    Logger::configure(std::cout, verbose ? Logger::Level::Verbose : Logger::Level::Info);
+    Logger::configure(std::cout, verbose ? Logger::Level::kVerbose : Logger::Level::kInfo);
     LOG(INFO) << "Marian RKNN Benchmark";
 
-    if (positional_args.size() != 3) {
-        LOG(ERROR) << "Usage: " << argv[0] << " [-v|--verbose] [--eigen] <model_dir> <input_file> <max_seconds>";
+    if (positionalArgs.size() != 3) {
+        LOG(ERROR) << "Usage: " << argv[0] << " [-v|--verbose] [--eigen] <modelDir> <input_file> <maxSeconds>";
         return -1;
     }
 
-    const char *model_dir = positional_args[0];
-    const std::string input_path = positional_args[1];
-    const std::string max_seconds_arg = positional_args[2];
+    const char* modelDir = positionalArgs[0];
+    const std::string inputPath = positionalArgs[1];
+    const std::string maxSecondsArg = positionalArgs[2];
 
-    double max_seconds = 0.0;
+    double maxSeconds = 0.0;
     try {
-        max_seconds = std::stod(max_seconds_arg);
+        maxSeconds = std::stod(maxSecondsArg);
     } catch (const std::exception& ex) {
-        LOG(ERROR) << "Failed to parse max_seconds: " << ex.what();
+        LOG(ERROR) << "Failed to parse maxSeconds: " << ex.what();
         return -1;
     }
 
-    if (max_seconds <= 0.0) {
-        LOG(ERROR) << "max_seconds must be greater than 0";
+    if (maxSeconds <= 0.0) {
+        LOG(ERROR) << "maxSeconds must be greater than 0";
         return -1;
     }
 
-    std::ifstream input_stream(input_path);
-    if (!input_stream) {
-        LOG(ERROR) << "Failed to open input file: " << input_path;
+    std::ifstream inputStream(inputPath);
+    if (!inputStream) {
+        LOG(ERROR) << "Failed to open input file: " << inputPath;
         return -1;
     }
 
-    std::vector<std::string> input_lines;
+    std::vector<std::string> inputLines;
     std::string line;
-    while (std::getline(input_stream, line)) {
+    while (std::getline(inputStream, line)) {
         if (line.empty()) {
             continue;
         }
-        input_lines.push_back(line);
+        inputLines.push_back(line);
     }
 
-    if (input_lines.empty()) {
-        LOG(ERROR) << "No non-empty input lines found in: " << input_path;
+    if (inputLines.empty()) {
+        LOG(ERROR) << "No non-empty input lines found in: " << inputPath;
         return -1;
     }
 
-    rknn_marian_rknn_context_t rknn_app_ctx;
-    int ret = init_marian_rknn_model(model_dir, &rknn_app_ctx, eigen);
+    RknnMarianContext appCtx;
+    int ret = initMarianRknnModel(modelDir, &appCtx, eigen);
     if (ret != 0) {
-        LOG(ERROR) << "init_marian_rknn_model failed";
+        LOG(ERROR) << "initMarianRknnModel failed";
         return 1;
     }
 
     LOG(INFO) << "Model init complete";
 
-    rknn_marian_inference_stats_t total_stats;
-    total_stats.reset();
-    size_t total_sentences = 0;
-    const auto start_time = std::chrono::steady_clock::now();
+    RknnMarianInferenceStats totalStats;
+    totalStats.reset();
+    size_t totalSentences = 0;
+    const auto startTime = std::chrono::steady_clock::now();
     size_t index = 0;
-    std::string output_text;
+    std::string outputText;
 
     while (true) {
         const auto now = std::chrono::steady_clock::now();
-        if (elapsed_seconds(start_time, now) >= max_seconds) {
+        if (elapsedSeconds(startTime, now) >= maxSeconds) {
             break;
         }
 
-        rknn_marian_inference_stats_t stats;
+        RknnMarianInferenceStats stats;
         stats.reset();
-        ret = inference_marian_rknn_model(&rknn_app_ctx, input_lines[index], output_text, &stats);
+        ret = inferenceMarianRknnModel(&appCtx, inputLines[index], outputText, &stats);
         if (ret != 0) {
             LOG(ERROR) << "marian_rknn_model inference failed. ret=" << ret;
             break;
         }
 
-        total_stats.accumulate(stats);
-        total_sentences++;
+        totalStats.accumulate(stats);
+        totalSentences++;
 
-        index = (index + 1) % input_lines.size();
+        index = (index + 1) % inputLines.size();
     }
-    const auto end_time = std::chrono::steady_clock::now();
+    const auto endTime = std::chrono::steady_clock::now();
 
-    ret = release_marian_rknn_model(&rknn_app_ctx);
+    ret = releaseMarianRknnModel(&appCtx);
     if (ret != 0) {
-        LOG(ERROR) << "release_marian_rknn_model failed. ret=" << ret;
+        LOG(ERROR) << "releaseMarianRknnModel failed. ret=" << ret;
     }
 
-    const double elapsed_s = elapsed_seconds(start_time, end_time);
+    const double elapsedSecondsTotal = elapsedSeconds(startTime, endTime);
     LOG(INFO) << "Benchmark complete";
-    LOG(INFO) << "Elapsed: " << std::fixed << std::setprecision(3) << elapsed_s << " s";
-    LOG(INFO) << "Sentences: " << total_sentences;
-    if (elapsed_s > 0.0) {
+    LOG(INFO) << "Elapsed: " << std::fixed << std::setprecision(3) << elapsedSecondsTotal << " s";
+    LOG(INFO) << "Sentences: " << totalSentences;
+    if (elapsedSecondsTotal > 0.0) {
         LOG(INFO) << "Sentences/sec: " << std::fixed << std::setprecision(3)
-                  << (static_cast<double>(total_sentences) / elapsed_s);
+                  << (static_cast<double>(totalSentences) / elapsedSecondsTotal);
     }
 
-    if (total_sentences > 0) {
-        log_metric("Total time", total_stats.total_ms);
-        log_metric("Encoder time", total_stats.encoder_ms);
-        log_metric("Decoder time", total_stats.decoder_ms);
-        log_metric("LM head time", total_stats.lm_head_ms);
+    if (totalSentences > 0) {
+        logMetric("Total time", totalStats.totalMs);
+        logMetric("Encoder time", totalStats.encoderMs);
+        logMetric("Decoder time", totalStats.decoderMs);
+        logMetric("LM head time", totalStats.lmHeadMs);
 
-        log_metric("Avg total time per sentence", total_stats.total_ms / total_sentences);
-        log_metric("Avg encoder time per sentence", total_stats.encoder_ms / total_sentences);
-        log_metric("Avg decoder time per sentence", total_stats.decoder_ms / total_sentences);
-        log_metric("Avg LM head time per sentence", total_stats.lm_head_ms / total_sentences);
+        logMetric("Avg total time per sentence", totalStats.totalMs / totalSentences);
+        logMetric("Avg encoder time per sentence", totalStats.encoderMs / totalSentences);
+        logMetric("Avg decoder time per sentence", totalStats.decoderMs / totalSentences);
+        logMetric("Avg LM head time per sentence", totalStats.lmHeadMs / totalSentences);
 
-        LOG(INFO) << "Input tokens: " << total_stats.input_tokens;
-        LOG(INFO) << "Output tokens: " << total_stats.output_tokens;
-        LOG(INFO) << "Decoder iterations: " << total_stats.decoder_iterations;
-        if (elapsed_s > 0.0) {
+        LOG(INFO) << "Input tokens: " << totalStats.inputTokens;
+        LOG(INFO) << "Output tokens: " << totalStats.outputTokens;
+        LOG(INFO) << "Decoder iterations: " << totalStats.decoderIterations;
+        if (elapsedSecondsTotal > 0.0) {
             LOG(INFO) << "Input tokens/sec: " << std::fixed << std::setprecision(3)
-                      << (static_cast<double>(total_stats.input_tokens) / elapsed_s);
+                      << (static_cast<double>(totalStats.inputTokens) / elapsedSecondsTotal);
             LOG(INFO) << "Output tokens/sec: " << std::fixed << std::setprecision(3)
-                      << (static_cast<double>(total_stats.output_tokens) / elapsed_s);
+                      << (static_cast<double>(totalStats.outputTokens) / elapsedSecondsTotal);
         }
     }
 

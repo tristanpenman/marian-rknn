@@ -17,42 +17,45 @@
 
 #include <cstdint>
 
-typedef uint16_t half;
+using Half = uint16_t;
 
-inline uint32_t as_uint(const float x)
+inline uint32_t asUint(const float x)
 {
     return *reinterpret_cast<const uint32_t*>(&x);
 }
 
-inline float as_float(const uint32_t x)
+inline float asFloat(const uint32_t x)
 {
     return *reinterpret_cast<const float*>(&x);
 }
 
 // IEEE-754 16-bit floating-point format (without infinity):
 // 1-5-10, exp-15, +-131008.0, +-6.1035156E-5, +-5.9604645E-8, 3.311 digits
-inline float half_to_float(const half x)
+inline float halfToFloat(const Half x)
 {
-    const uint32_t e = (x&0x7C00) >> 10; // exponent
-    const uint32_t m = (x&0x03FF) << 13; // mantissa
+    const uint32_t e = (x & 0x7C00) >> 10;
+    const uint32_t m = (x & 0x03FF) << 13;
 
     // evil log2 bit hack to count leading zeros in denormalized format
-    const uint32_t v = as_uint(static_cast<float>(m)) >> 23;
+    const uint32_t v = asUint(static_cast<float>(m)) >> 23;
 
     // sign : normalized : denormalized
-    return as_float((x&0x8000)<<16 | (e!=0)*((e+112)<<23|m) | ((e==0)&(m!=0))*((v-37)<<23|((m<<(150-v))&0x007FE000)));
+    return asFloat(
+        (x & 0x8000) << 16
+        | (e != 0) * ((e + 112) << 23 | m)
+        | ((e == 0) & (m != 0)) * ((v - 37) << 23 | ((m << (150 - v)) & 0x007FE000)));
 }
 
-union suf32
+union FloatBits
 {
     int32_t i;
     uint32_t u;
     float f;
 };
 
-inline half float_to_half(float x)
+inline Half floatToHalf(float x)
 {
-    suf32 in{};
+    FloatBits in{};
     in.f = x;
     const uint32_t sign = in.u & 0x80000000;
     in.u ^= sign;
@@ -73,16 +76,16 @@ inline half float_to_half(float x)
     return w;
 }
 
-inline void float_to_half_array(const float *src, half *dst, const int size)
+inline void floatToHalfArray(const float* src, Half* dst, const int size)
 {
     for (int i = 0; i < size; i++) {
-        dst[i] = float_to_half(src[i]);
+        dst[i] = floatToHalf(src[i]);
     }
 }
 
-inline void half_to_float_array(const half *src, float *dst, const int size)
+inline void halfToFloatArray(const Half* src, float* dst, const int size)
 {
     for (int i = 0; i < size; i++) {
-        dst[i] = half_to_float(src[i]);
+        dst[i] = halfToFloat(src[i]);
     }
 }

@@ -24,10 +24,10 @@
 
 class EasyTimer
 {
-    timeval start_time{};
-    timeval stop_time{};
+    timeval startTime_{};
+    timeval stopTime_{};
 
-    static double _get_us(const timeval t)
+    static double getMicroseconds(const timeval t)
     {
         return t.tv_sec * 1000000 + t.tv_usec;
     }
@@ -38,29 +38,28 @@ public:
 
     void tik()
     {
-        gettimeofday(&start_time, nullptr);
+        gettimeofday(&startTime_, nullptr);
     }
 
     void tok()
     {
-        gettimeofday(&stop_time, nullptr);
+        gettimeofday(&stopTime_, nullptr);
     }
 
 #ifdef TIMING_DISABLED
-    void print_time(const char *str)
+    void printTime(const char* label)
     {
-        // No action if TIMING_DISABLED is defined
     }
 #else
-    void print_time(const char *str) const
+    void printTime(const char* label) const
     {
-        static Logger timer_logger("timer");
-        timer_logger(VERBOSE) << str << " use: " << get_time() << " ms";
+        static Logger timerLogger("timer");
+        timerLogger(VERBOSE) << label << " use: " << elapsedMs() << " ms";
     }
 #endif
 
-    [[nodiscard]] float get_time() const
+    [[nodiscard]] float elapsedMs() const
     {
-        return (_get_us(stop_time) - _get_us(start_time)) / 1000;
+        return (getMicroseconds(stopTime_) - getMicroseconds(startTime_)) / 1000;
     }
 };

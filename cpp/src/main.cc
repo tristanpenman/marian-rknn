@@ -13,9 +13,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <cstdlib>
+#include <cstring>
 #include <iostream>
 #include <optional>
-#include <sstream>
 #include <string>
 #include <vector>
 
@@ -25,16 +26,16 @@
 
 namespace {
 
-static constexpr size_t kMaxUserInputLen = 1024;
+constexpr size_t kMaxUserInputLen = 1024;
 
-void print_usage(const char* program)
+void printUsage(const char* program)
 {
     LOG(ERROR) << "Usage: " << program
-               << " [-v|--verbose] [--eigen] [--cores <num_cores>] <model_dir>"
+               << " [-v|--verbose] [--eigen] [--cores <numCores>] <modelDir>"
                << " <sentence ...>";
 }
 
-int read_user_input(std::string &line)
+int readUserInput(std::string& line)
 {
     std::cout << "Enter text to translate:\n";
     line.clear();
@@ -47,13 +48,13 @@ int read_user_input(std::string &line)
 
 }  // namespace
 
-int main(const int argc, char **argv)
+int main(const int argc, char** argv)
 {
     bool eigen = false;
     bool verbose = false;
-    std::optional<int> num_cores;
-    std::vector<const char*> positional_args;
-    positional_args.reserve(static_cast<size_t>(argc - 1));
+    std::optional<int> numCores;
+    std::vector<const char*> positionalArgs;
+    positionalArgs.reserve(static_cast<size_t>(argc - 1));
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "-v") == 0 || strcmp(argv[i], "--verbose") == 0) {
             verbose = true;
@@ -68,82 +69,82 @@ int main(const int argc, char **argv)
                 LOG(WARNING) << "--cores option requires an argument specifying the number of cores to use";
                 return -1;
             }
-            num_cores = std::atoi(argv[++i]);
-            if (num_cores <= 0 || num_cores > 3) {
+            numCores = std::atoi(argv[++i]);
+            if (numCores <= 0 || numCores > 3) {
                 LOG(WARNING) << "Invalid number of cores specified: " << argv[i];
                 return -1;
             }
             continue;
         }
-        positional_args.push_back(argv[i]);
+        positionalArgs.push_back(argv[i]);
     }
 
-    Logger::configure(std::cout, verbose ? Logger::Level::Verbose : Logger::Level::Info);
+    Logger::configure(std::cout, verbose ? Logger::Level::kVerbose : Logger::Level::kInfo);
     LOG(INFO) << "Marian RKNN Translator Demo";
 
-    if (positional_args.empty()) {
-        print_usage(argv[0]);
+    if (positionalArgs.empty()) {
+        printUsage(argv[0]);
         return -1;
     }
 
     EasyTimer timer;
-    bool is_receipt = false;
-    const char *model_dir = positional_args[0];
+    bool isReceipt = false;
+    const char* modelDir = positionalArgs[0];
 
-    rknn_marian_rknn_context_t rknn_app_ctx;
+    RknnMarianContext appCtx;
 
-    std::string input_text;
-    std::string output_text;
+    std::string inputText;
+    std::string outputText;
 
-    int ret = init_marian_rknn_model(model_dir, &rknn_app_ctx, eigen, num_cores);
+    int ret = initMarianRknnModel(modelDir, &appCtx, eigen, numCores);
     if (ret != 0) {
-        LOG(ERROR) << "init_marian_rknn_model failed";
+        LOG(ERROR) << "initMarianRknnModel failed";
         return 1;
     }
 
     LOG(INFO) << "Model init complete";
-    if (positional_args.size() > 2) {
-        is_receipt = true;
-        for (size_t i = 2; i < positional_args.size(); i++) {
-            input_text += positional_args[i];
-            input_text += " ";
+    if (positionalArgs.size() > 2) {
+        isReceipt = true;
+        for (size_t i = 2; i < positionalArgs.size(); i++) {
+            inputText += positionalArgs[i];
+            inputText += " ";
         }
 
-        LOG(INFO) << "Read input from cmd line: " << input_text;
+        LOG(INFO) << "Read input from cmd line: " << inputText;
     }
 
     while (true) {
-        if (is_receipt == false) {
-            if (ret = read_user_input(input_text); ret == -1) {
+        if (!isReceipt) {
+            if (ret = readUserInput(inputText); ret == -1) {
                 break;
             }
         }
 
-        if (input_text.size() >= kMaxUserInputLen) {
-            input_text.resize(kMaxUserInputLen - 1);
+        if (inputText.size() >= kMaxUserInputLen) {
+            inputText.resize(kMaxUserInputLen - 1);
         }
 
         LOG(INFO) << "About to run inference...";
 
         timer.tik();
-        ret = inference_marian_rknn_model(&rknn_app_ctx, input_text, output_text);
+        ret = inferenceMarianRknnModel(&appCtx, inputText, outputText);
         if (ret != 0) {
             LOG(ERROR) << "marian_rknn_model inference failed. ret=" << ret;
             break;
         }
         timer.tok();
-        timer.print_time("Inference time");
+        timer.printTime("Inference time");
 
-        LOG(INFO) << "Output: " << output_text;
+        LOG(INFO) << "Output: " << outputText;
 
-        if (is_receipt == true) {
+        if (isReceipt) {
             break;
         }
     }
 
-    ret = release_marian_rknn_model(&rknn_app_ctx);
+    ret = releaseMarianRknnModel(&appCtx);
     if (ret != 0) {
-        LOG(ERROR) << "release_marian_rknn_model failed. ret=" << ret;
+        LOG(ERROR) << "releaseMarianRknnModel failed. ret=" << ret;
     }
 
     return 0;

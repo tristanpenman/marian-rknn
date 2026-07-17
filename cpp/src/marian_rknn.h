@@ -23,126 +23,126 @@
 
 #include <sentencepiece_processor.h>
 
-#include "rknn_utils.h"
 #include "rknn_matmul_api.h"
+#include "rknn_utils.h"
 #include "type_half.h"
 
-struct rknn_marian_lm_head_matmul_chunk_t
+struct RknnMarianLmHeadMatmulChunk
 {
-    int vocab_offset = 0;
-    int vocab_size = 0;
-    int padded_vocab_size = 0;
+    int vocabOffset = 0;
+    int vocabSize = 0;
+    int paddedVocabSize = 0;
     rknn_matmul_ctx ctx = 0;
-    rknn_tensor_mem* A = nullptr;
-    rknn_tensor_mem* B = nullptr;
-    rknn_tensor_mem* C = nullptr;
-    rknn_matmul_io_attr io_attr{};
+    rknn_tensor_mem* input = nullptr;
+    rknn_tensor_mem* weights = nullptr;
+    rknn_tensor_mem* output = nullptr;
+    rknn_matmul_io_attr ioAttr{};
 };
 
-struct rknn_marian_lm_head_t
+struct RknnMarianLmHead
 {
-    int D;
-    int V;
+    int hiddenSize = 0;
+    int vocabSize = 0;
 
-    float* Wt; // raw VxD row-major LM head weights
-    float* b;  // V
+    float* weights = nullptr;
+    float* bias = nullptr;
 
-    bool use_npu = false;
-    std::vector<rknn_marian_lm_head_matmul_chunk_t> matmul_chunks;
+    bool useNpu = false;
+    std::vector<RknnMarianLmHeadMatmulChunk> matmulChunks;
 
     void operator()(const float* hidden, float* logits) const;
-    int apply(const half* hidden, float* logits) const;
+    int apply(const Half* hidden, float* logits) const;
 };
 
-struct rknn_marian_rknn_context_t
+struct RknnMarianContext
 {
-    // read from spm files
-    sentencepiece::SentencePieceProcessor spm_src;
-    sentencepiece::SentencePieceProcessor spm_tgt;
+    // Read from SentencePiece model files
+    sentencepiece::SentencePieceProcessor sourceTokenizer;
+    sentencepiece::SentencePieceProcessor targetTokenizer;
 
-    // read from vocab file
+    // Read from vocab file
     std::unordered_map<std::string, int32_t> vocab;
-    std::unordered_map<int32_t, std::string> vocab_inv;
+    std::unordered_map<int32_t, std::string> vocabInv;
 
-    // rknn encoder and decoder
-    MODEL_INFO enc;
-    MODEL_INFO dec;
+    // RKNN encoder and decoder
+    ModelInfo enc;
+    ModelInfo dec;
 
-    // read from lm weight and bias files
-    rknn_marian_lm_head_t lm_head;
+    // Read from LM weight and bias files
+    RknnMarianLmHead lmHead;
 
-    // read from config file
-    int32_t bos_token_id;
-    int32_t eos_token_id;
-    int32_t decoder_start_token_id;
-    int32_t pad_token_id;
-    int32_t unk_token_id;
+    // Read from config file
+    int32_t bosTokenId = 0;
+    int32_t eosTokenId = 0;
+    int32_t decoderStartTokenId = 0;
+    int32_t padTokenId = 0;
+    int32_t unkTokenId = 0;
 
-    // other constraints
-    size_t enc_len;
-    size_t dec_len;
+    // Model shape constraints
+    size_t encoderLength = 0;
+    size_t decoderLength = 0;
 };
 
-struct rknn_marian_inference_stats_t
+struct RknnMarianInferenceStats
 {
-    double total_ms = 0.0;
-    double encoder_ms = 0.0;
-    double decoder_ms = 0.0;
-    double lm_head_ms = 0.0;
-    size_t decoder_iterations = 0;
-    size_t input_tokens = 0;
-    size_t output_tokens = 0;
+    double totalMs = 0.0;
+    double encoderMs = 0.0;
+    double decoderMs = 0.0;
+    double lmHeadMs = 0.0;
+    size_t decoderIterations = 0;
+    size_t inputTokens = 0;
+    size_t outputTokens = 0;
 
     void reset()
     {
-        total_ms = 0.0;
-        encoder_ms = 0.0;
-        decoder_ms = 0.0;
-        lm_head_ms = 0.0;
-        decoder_iterations = 0;
-        input_tokens = 0;
-        output_tokens = 0;
+        totalMs = 0.0;
+        encoderMs = 0.0;
+        decoderMs = 0.0;
+        lmHeadMs = 0.0;
+        decoderIterations = 0;
+        inputTokens = 0;
+        outputTokens = 0;
     }
 
-    void accumulate(const rknn_marian_inference_stats_t& other)
+    void accumulate(const RknnMarianInferenceStats& other)
     {
-        total_ms += other.total_ms;
-        encoder_ms += other.encoder_ms;
-        decoder_ms += other.decoder_ms;
-        lm_head_ms += other.lm_head_ms;
-        decoder_iterations += other.decoder_iterations;
-        input_tokens += other.input_tokens;
-        output_tokens += other.output_tokens;
+        totalMs += other.totalMs;
+        encoderMs += other.encoderMs;
+        decoderMs += other.decoderMs;
+        lmHeadMs += other.lmHeadMs;
+        decoderIterations += other.decoderIterations;
+        inputTokens += other.inputTokens;
+        outputTokens += other.outputTokens;
     }
 };
 
-int init_marian_rknn_model(
-    const std::string &model_dir,
-    rknn_marian_rknn_context_t *app_ctx,
+int initMarianRknnModel(
+    const std::string& modelDir,
+    RknnMarianContext* appCtx,
     bool eigen = false,
-    std::optional<int> num_cores = std::nullopt);
+    std::optional<int> numCores = std::nullopt);
 
-int release_marian_rknn_model(
-    rknn_marian_rknn_context_t* app_ctx);
+int releaseMarianRknnModel(
+    RknnMarianContext* appCtx);
 
-int inference_marian_rknn_model(
-    rknn_marian_rknn_context_t* app_ctx,
-    const std::string &input_sentence,
-    std::string &output_sentence);
+int inferenceMarianRknnModel(
+    RknnMarianContext* appCtx,
+    const std::string& inputSentence,
+    std::string& outputSentence);
 
-int inference_marian_rknn_model(
-    rknn_marian_rknn_context_t* app_ctx,
-    const std::string &input_sentence,
-    std::string &output_sentence,
-    rknn_marian_inference_stats_t* stats);
+int inferenceMarianRknnModel(
+    RknnMarianContext* appCtx,
+    const std::string& inputSentence,
+    std::string& outputSentence,
+    RknnMarianInferenceStats* stats);
 
-// exposed for testing:
+// Exposed for testing
 
-std::vector<int32_t> build_attention_mask(
-    const rknn_marian_rknn_context_t *app_ctx,
-    const std::vector<int32_t> &normalized_tokens);
+std::vector<int32_t> buildAttentionMask(
+    const RknnMarianContext* appCtx,
+    const std::vector<int32_t>& normalizedTokens);
 
-std::vector<int32_t> normalize_encoder_tokens(
-    const rknn_marian_rknn_context_t* app_ctx,
-    const int32_t* input_tokens,
-    rknn_marian_inference_stats_t* stats);
+std::vector<int32_t> normalizeEncoderTokens(
+    const RknnMarianContext* appCtx,
+    const int32_t* inputTokens,
+    RknnMarianInferenceStats* stats);
