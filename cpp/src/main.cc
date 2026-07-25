@@ -70,7 +70,7 @@ int main(const int argc, char** argv)
                 return -1;
             }
             numCores = std::atoi(argv[++i]);
-            if (numCores <= 0 || numCores > 3) {
+            if (*numCores <= 0 || *numCores > 3) {
                 LOG(WARNING) << "Invalid number of cores specified: " << argv[i];
                 return -1;
             }
@@ -103,9 +103,9 @@ int main(const int argc, char** argv)
     }
 
     LOG(INFO) << "Model init complete";
-    if (positionalArgs.size() > 2) {
+    if (positionalArgs.size() > 1) {
         isReceipt = true;
-        for (size_t i = 2; i < positionalArgs.size(); i++) {
+        for (size_t i = 1; i < positionalArgs.size(); i++) {
             inputText += positionalArgs[i];
             inputText += " ";
         }
