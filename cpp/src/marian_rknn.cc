@@ -20,6 +20,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
+#include <optional>
 #include <sstream>
 #include <vector>
 
@@ -482,11 +483,11 @@ int rknnNmtProcess(
     return greedyDecode(appCtx, outputToken, stats);
 }
 
-size_t getSequenceLength(const rknn_tensor_attr& attr, const char* label)
+std::optional<size_t> getSequenceLength(const rknn_tensor_attr& attr, const char* label)
 {
     if (attr.n_dims < 2) {
         LOG(ERROR) << label << " has insufficient dims: " << attr.n_dims;
-        return -1;
+        return std::nullopt;
     }
     return attr.dims[1];
 }
@@ -504,24 +505,33 @@ bool validateEqualLength(const size_t lhs, const size_t rhs, const char* lhsLabe
 int validateSequenceLengths(const RknnMarianContext* appCtx)
 {
     const auto encoderMaskLength = getSequenceLength(appCtx->enc.inputAttrs[toIndex(EncoderInput::kAttentionMask)], "encoder attentionMask");
-    LOG(VERBOSE) << "Encoder mask len: " << encoderMaskLength;
-    if (!validateEqualLength(appCtx->encoderLength, encoderMaskLength, "encoder input_ids", "encoder attentionMask")) {
+    if (!encoderMaskLength) {
+        return -1;
+    }
+    LOG(VERBOSE) << "Encoder mask len: " << *encoderMaskLength;
+    if (!validateEqualLength(appCtx->encoderLength, *encoderMaskLength, "encoder input_ids", "encoder attentionMask")) {
         return -1;
     }
 
     const auto decoderMaskLength = getSequenceLength(appCtx->dec.inputAttrs[toIndex(DecoderInput::kAttentionMask)], "decoder attentionMask");
-    LOG(VERBOSE) << "Decoder mask len: " << decoderMaskLength;
-    if (!validateEqualLength(appCtx->decoderLength, decoderMaskLength, "decoder input_ids", "decoder attentionMask")) {
+    if (!decoderMaskLength) {
+        return -1;
+    }
+    LOG(VERBOSE) << "Decoder mask len: " << *decoderMaskLength;
+    if (!validateEqualLength(appCtx->decoderLength, *decoderMaskLength, "decoder input_ids", "decoder attentionMask")) {
         return -1;
     }
 
-    const size_t decoderHiddenLength = getSequenceLength(appCtx->dec.inputAttrs[toIndex(DecoderInput::kEncoderHiddenStates)], "decoder encoder_hidden_states");
-    LOG(VERBOSE) << "Decoder hidden len: " << decoderHiddenLength;
-    if (decoderHiddenLength <= 0) {
+    const auto decoderHiddenLength = getSequenceLength(appCtx->dec.inputAttrs[toIndex(DecoderInput::kEncoderHiddenStates)], "decoder encoder_hidden_states");
+    if (!decoderHiddenLength) {
+        return -1;
+    }
+    LOG(VERBOSE) << "Decoder hidden len: " << *decoderHiddenLength;
+    if (*decoderHiddenLength <= 0) {
         return -1;
     }
 
-    if (!validateEqualLength(decoderHiddenLength, appCtx->encoderLength, "decoder encoder_hidden_states", "encoder input_ids")) {
+    if (!validateEqualLength(*decoderHiddenLength, appCtx->encoderLength, "decoder encoder_hidden_states", "encoder input_ids")) {
         return -1;
     }
 
@@ -606,10 +616,18 @@ int initMarianRknnModel(
         return -1;
     }
 
-    appCtx->encoderLength = getSequenceLength(appCtx->enc.inputAttrs[toIndex(EncoderInput::kInputIds)], "encoder input_ids");
+    const auto encoderLength = getSequenceLength(appCtx->enc.inputAttrs[toIndex(EncoderInput::kInputIds)], "encoder input_ids");
+    if (!encoderLength) {
+        return -1;
+    }
+    appCtx->encoderLength = *encoderLength;
     LOG(INFO) << "Encoder length: " << appCtx->encoderLength;
 
-    appCtx->decoderLength = getSequenceLength(appCtx->dec.inputAttrs[toIndex(DecoderInput::kInputIds)], "decoder input_ids");
+    const auto decoderLength = getSequenceLength(appCtx->dec.inputAttrs[toIndex(DecoderInput::kInputIds)], "decoder input_ids");
+    if (!decoderLength) {
+        return -1;
+    }
+    appCtx->decoderLength = *decoderLength;
     LOG(INFO) << "Decoder length: " << appCtx->decoderLength;
 
     if (validateSequenceLengths(appCtx) != 0) {
@@ -714,11 +732,23 @@ int initMarianRknnModel(
 
     LOG(INFO) << "Load LM weight";
     appCtx->lmHead.weights = static_cast<float*>(malloc(sizeof(float) * vocabSize * hiddenSize));
-    readFp32FromFile(lmWeightPath.c_str(), vocabSize * hiddenSize, appCtx->lmHead.weights);
+    if (!appCtx->lmHead.weights) {
+        LOG(ERROR) << "Failed to allocate LM weight buffer";
+        return -1;
+    }
+    if (readFp32FromFile(lmWeightPath.c_str(), vocabSize * hiddenSize, appCtx->lmHead.weights) != 0) {
+        return -1;
+    }
 
     LOG(INFO) << "Load LM bias";
     appCtx->lmHead.bias = static_cast<float*>(malloc(sizeof(float) * vocabSize));
-    readFp32FromFile(lmBiasPath.c_str(), vocabSize, appCtx->lmHead.bias);
+    if (!appCtx->lmHead.bias) {
+        LOG(ERROR) << "Failed to allocate LM bias buffer";
+        return -1;
+    }
+    if (readFp32FromFile(lmBiasPath.c_str(), vocabSize, appCtx->lmHead.bias) != 0) {
+        return -1;
+    }
 
     if (eigen) {
         LOG(INFO) << "Using Eigen for LM head";
@@ -812,6 +842,9 @@ int inferenceMarianRknnModel(
     std::vector<int32_t> outputTokens;
     outputTokens.resize(appCtx->decoderLength, 0);
     int outputLength = rknnNmtProcess(appCtx, encodedTokens.data(), outputTokens.data(), stats);
+    if (outputLength < 0) {
+        return -1;
+    }
 
     // Prepare tokens for decode.
     LOG(VERBOSE) << "reverse vocab mapping";
