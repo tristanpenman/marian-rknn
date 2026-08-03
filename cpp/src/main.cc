@@ -30,9 +30,11 @@ constexpr size_t kMaxUserInputLen = 1024;
 
 void printUsage(const char* program)
 {
-    LOG(ERROR) << "Usage: " << program
-               << " [-v|--verbose] [--eigen] [--cores <numCores>] <modelDir>"
-               << " <sentence ...>";
+    std::cout
+        << "Usage: " << program
+        << " [-v|--verbose] [--eigen] [--cores <numCores>] <modelDir>"
+        << " <sentence ...>"
+        << std::endl;
 }
 
 int readUserInput(std::string& line)
@@ -80,12 +82,12 @@ int main(const int argc, char** argv)
     }
 
     Logger::configure(std::cout, verbose ? Logger::Level::kVerbose : Logger::Level::kInfo);
-    LOG(INFO) << "Marian RKNN Translator Demo";
-
     if (positionalArgs.empty()) {
         printUsage(argv[0]);
         return -1;
     }
+
+    LOG(INFO) << "Marian RKNN Translator Demo";
 
     EasyTimer timer;
     bool isReceipt = false;
